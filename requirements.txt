@@ -1,0 +1,2 @@
+datajoint>=0.12.8
+termcolor
