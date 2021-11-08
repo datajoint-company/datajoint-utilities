@@ -1,16 +1,11 @@
 # dj-search
 DataJoint utility to facilitate text search on a DataJoint pipeline
 
-# Installation
-Install using pip from GitHub repository:
-
-    
-    pip install git+https://github.com/datajoint/dj-search.git
 
 # Usage
 
 ```
-from dj_search import DJSearch
+from datajoint_utilities.dj_search import DJSearch
 
 # limit the search scope to schemas with database prefixes of interest
 djsearch = DJSearch(['dbprefix1_', 'dbprefix2_])
