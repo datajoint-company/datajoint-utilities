@@ -2,7 +2,7 @@
 A general purpose repository containing all generic tools/utilities surrounding the DataJoint ecosystem. These can be candidates for DataJoint plugins
 
 
-# Support status
+# Level of support
 
 The tools/utilities here are meant as reference or example implementation for other DataJoint 
 users to explore, modify, adopt, etc.
