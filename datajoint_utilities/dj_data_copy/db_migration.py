@@ -9,8 +9,7 @@ Utility for same connection migration of data between schema and table
 
 def migrate_schema(origin_schema, destination_schema):
     """
-    Data migration from all tables from origin_schema to destination_schema
-    Migration approach for DataJoint 0.12.7
+    Data migration from all tables from `origin_schema` to `destination_schema`, in topologically sorted order
     """
     total_to_transfer_count = 0
     total_transferred_count = 0
