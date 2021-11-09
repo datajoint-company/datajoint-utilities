@@ -61,7 +61,8 @@ def migrate_table(orig_tbl, dest_tbl):
                        if has_external or is_different_server
                        else (orig_tbl & records_to_transfer))
             dest_tbl.insert(entries, skip_duplicates=True, allow_direct_insert=True)
-    except dj.DataJointError:
+    except dj.DataJointError as e:
+        print(f'\t{str(e)}')
         transferred_count = 0
     else:
         transferred_count = to_transfer_count
