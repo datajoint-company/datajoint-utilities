@@ -62,7 +62,7 @@ def migrate_table(orig_tbl, dest_tbl):
                        else (orig_tbl & records_to_transfer))
             dest_tbl.insert(entries, skip_duplicates=True, allow_direct_insert=True)
     except dj.DataJointError as e:
-        print(f'\t{str(e)}')
+        print(f'\tData copy error: {str(e)}')
         transferred_count = 0
     else:
         transferred_count = to_transfer_count
