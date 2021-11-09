@@ -22,7 +22,7 @@ db_migration.migrate_table(source_schema.Session, target_schema.Session)
 
 # Copy the data for the entire schema - copy all tables from this schema in topologically sorted order
 
-db_migration.migrate_schema(source_schema, target_schema
+db_migration.migrate_schema(source_schema, target_schema)
 
 ```
 
@@ -41,6 +41,6 @@ db_migration.migrate_table(source_schema.Session, target_schema.Session)
 
 # Copy the data for the entire schema - copy all tables from this schema in topologically sorted order
 
-db_migration.migrate_schema(source_schema, target_schema
+db_migration.migrate_schema(source_schema, target_schema)
 
 ```
