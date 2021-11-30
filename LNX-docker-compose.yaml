@@ -1,0 +1,22 @@
+# docker-compose -f LNX-docker-compose.yaml up --build --exit-code-from app
+version: "2.4"
+services:
+  app:
+    image: datajoint/djtest:py${PY_VER}-alpine
+    user: ${HOST_UID}:anaconda
+    working_dir: /main
+    command:
+      - sh
+      - -lc
+      - |
+        set -e
+        echo "------ SYNTAX TESTS ------"
+        flake8 dj_search --count --select=E9,F63,F7,F82 --show-source --statistics
+        echo "------ UNIT TESTS ------"
+        pytest -s --cov-report term-missing \
+          --cov=/opt/conda/lib/python3.8/site-packages/dj_search /main/tests
+        echo "------ STYLE TESTS ------"
+        flake8 dj_search --count --max-complexity=21 --max-line-length=95 --statistics
+    volumes:
+      - .:/main
+      - ./test_requirements.txt:/tmp/pip_requirements.txt
