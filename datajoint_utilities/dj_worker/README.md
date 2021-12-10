@@ -16,7 +16,7 @@ from datajoint_utilities.dj_worker import DataJointWorker, WorkerLog
 
 db_prefix = 'my_pipeline_'
 
-worker1 = DataJointWorker('worker1', 'db_prefix + 'log'',
+worker1 = DataJointWorker('worker1', db_prefix + 'log',
                          db_prefix=db_prefix,
                          run_duration=3600*3,
                          sleep_duration=10)

@@ -29,7 +29,7 @@ _populate_settings = {
     'suppress_errors': True}
 
 
-class WorkerLog(dj.Table):
+class WorkerLog(dj.Manual):
     definition = """
     # Registration of processing jobs running .populate() jobs or custom function
     process_timestamp : datetime      # timestamp of the processing job
@@ -51,7 +51,7 @@ class WorkerLog(dj.Table):
             table_name = dj.utils.to_camel_case(table_name.strip('`'))
             process_name = f'{schema_name}.{table_name}'
             user = process.connection.get_user()
-        elif inspect.isfunction(process):
+        elif inspect.isfunction(process) or inspect.ismethod(process):
             process_name = process.__name__
             user = ''
         else:
@@ -120,7 +120,7 @@ class DataJointWorker:
             schema_name = process.full_table_name.split('.')[0].replace('`', '')
             if schema_name not in self._pipeline_modules:
                 self._pipeline_modules[schema_name] = dj.create_virtual_module(schema_name, schema_name)
-        elif inspect.isfunction(process):
+        elif inspect.isfunction(process) or inspect.ismethod(process):
             self._processes_to_run.append(('function', process, kwargs))
         else:
             raise NotImplemented(f'Unable to handle processing step of type {type(process)}')
