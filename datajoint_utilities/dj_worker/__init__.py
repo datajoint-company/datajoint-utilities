@@ -1,3 +1,20 @@
+"""
+Mechanism to set up and manage "workers" to operate a DataJoint pipeline
+
+Each "worker" is run in a while-loop with the total run-duration configurable via
+command line argument '--duration' (if not set, runs perpetually)
+
+    - the loop will not begin a new cycle after this period of time (in seconds)
+    - the loop will run perpetually if duration<0 or if duration==None
+    - the script will not be killed _at_ this limit, it will keep executing,
+      and just stop repeating after the time limit is exceeded
+
+Some populate settings (e.g. 'limit', 'max_calls') can be set to process some number of jobs at
+a time for every iteration of the loop, instead of all jobs. This allows for the controll of the processing to
+propagate through the pipeline more horizontally or vertically.
+"""
+
+
 import datajoint as dj
 import inspect
 import time
@@ -14,7 +31,7 @@ _populate_settings = {
 
 class WorkerLog(dj.Table):
     definition = """
-    # Registration of processing jobs running .populate() jobs (e.g. in process.py script)
+    # Registration of processing jobs running .populate() jobs or custom function
     process_timestamp : datetime      # timestamp of the processing job
     process           : varchar(64)
     ---
