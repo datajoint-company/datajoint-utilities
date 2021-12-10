@@ -4,21 +4,21 @@ import pathlib
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
-with open(pathlib.Path(__file__).parent / 'dj_search' / 'meta.py') as f:
+with open(pathlib.Path(__file__).parent / 'datajoint_utilities' / 'version.py') as f:
     exec(f.read())
 
 with open(pathlib.Path(__file__).parent / 'requirements.txt') as f:
     requirements = f.read().splitlines()
 
 setuptools.setup(
-    name=pkg_name,
+    name='datajoint_utilities',
     version=__version__,
     author="Thinh Nguyen",
-    author_email="thinh@vathes.com",
-    description="Unofficial search utility for DataJoint pipeline.",
+    author_email="thinh@datajoint.com",
+    description="Unofficial utilities to support the DataJoint framework.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/datajoint/dj-search",
+    url="https://github.com/vathes/datajoint-utilities",
     packages=setuptools.find_packages(exclude=['test*', 'docs']),
     classifiers=[
         "Programming Language :: Python :: 3",
