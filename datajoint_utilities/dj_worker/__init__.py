@@ -24,7 +24,7 @@ class WorkerLog(dj.Table):
     pid=0             : int unsigned  # system process id  
     """
 
-    _table_name = '~WorkerLog'
+    _table_name = '~worker_log'
 
     @classmethod
     def log_process_job(cls, process, worker_name='', db_prefix=''):
@@ -37,6 +37,8 @@ class WorkerLog(dj.Table):
         elif inspect.isfunction(process):
             process_name = process.__name__
             user = ''
+        else:
+            raise ValueError('Input process must be either a DataJoint table or a function')
 
         if not worker_name:
             frame = inspect.currentframe()
@@ -52,7 +54,7 @@ class WorkerLog(dj.Table):
                      'pid': os.getpid()})
 
     @classmethod
-    def print_recent_jobs(cls, backtrack_minutes=60):
+    def get_recent_jobs(cls, backtrack_minutes=60):
         recent = (cls.proj(
             minute_elapsed='TIMESTAMPDIFF(MINUTE, process_timestamp, UTC_TIMESTAMP())')
                   & f'minute_elapsed < {backtrack_minutes}')
@@ -72,7 +74,7 @@ class WorkerLog(dj.Table):
                     & f'elapsed_days > {cutoff_days}')
         if old_jobs:
             with dj.config(safemode=False):
-                (cls & old_jobs).delete()
+                (cls & old_jobs).delete_quick()
 
 
 class DataJointWorker:
@@ -108,9 +110,9 @@ class DataJointWorker:
 
     def run(self):
         start_time = time.time()
-        while ((time.time() - start_time < self._run_duration)
-               or (self._run_duration is None)
-               or (self._run_duration < 0)):
+        while (time.time() - start_time < self._run_duration
+               or self._run_duration is None
+               or self._run_duration < 0):
 
             for process_type, process, kwargs in self._processes_to_run:
                 WorkerLog.log_process_job(process, worker_name=self.name,
