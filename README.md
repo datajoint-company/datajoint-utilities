@@ -6,6 +6,7 @@ A general purpose repository containing all generic tools/utilities surrounding 
 
 + [dj_search](./datajoint_utilities/dj_search) - text search to explore DataJoint pipeline
 + [dj_data_copy](./datajoint_utilities/dj_data_copy) - copy data across tables, schemas, database servers
++ [dj_worker](./datajoint_utilities/dj_worker) - set up workers to operate a DataJoint pipeline - i.e. manage and monitor `.populate()` calls, orchestrate different workers, etc.
 
 
 # Installation
