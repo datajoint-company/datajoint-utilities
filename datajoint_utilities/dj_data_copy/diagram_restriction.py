@@ -27,8 +27,8 @@ def get_restricted_diagram_tables(restriction_tables,
                                   schema_block_list=None,
                                   verbose=False):
     """
-    Search the full pipeline diagram to find the set of ancestor and descendants
-        tables of the given "restriction_tables"
+    Search the full pipeline diagram to find the set of ancestor and descendant
+        tables for the given "restriction_tables"
     :param restriction_tables: list of datajoint tables to restrict the diagram
     :param schema_allow_list: list of schema names to allow in the search
     :param schema_block_list: list of schema names to ignore in the search
