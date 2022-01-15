@@ -3,7 +3,7 @@ import numpy as np
 
 
 """
-Utility for same connection migration of data between schema and table
+Utility for data copy/migration between schemas and tables
 """
 
 
