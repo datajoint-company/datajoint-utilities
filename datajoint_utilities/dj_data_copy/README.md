@@ -52,7 +52,7 @@ Utility to retrieve all ancestors and descendants associated with a given set of
 
 ```
 import datajoint as dj
-from datajoint_utilities.dj_data_copy import diagram_restriction
+from datajoint_utilities.dj_data_copy.diagram_restriction import get_restricted_diagram_tables
 ```
 
 Retrieve all ancestors and descendants of the tables `subject.Subject` and `ephys.Unit`, excluding those from the schema named `pipeline_analysis`
@@ -66,7 +66,7 @@ restriction_tables = [subject.Subject, ephys.Unit]
 restricted_tables = get_restricted_diagram_tables(
     restriction_tables,
     schema_allow_list=None,
-    schema_block_list=['pipeline_analysis']])
+    schema_block_list=['pipeline_analysis'])
 
 list(restricted_tables)
 ```
@@ -85,7 +85,7 @@ It is particularly useful to use in conjunction with the ***diagram restriction*
 
 ```
 import datajoint as dj
-from datajoint_utilities.dj_data_copy import diagram_restriction, generate_schemas_definition_code
+from datajoint_utilities.dj_data_copy.diagram_restriction import get_restricted_diagram_tables, generate_schemas_definition_code
 ```
 
 Retrieve all ancestors and descendants of the tables `subject.Subject` and `ephys.Unit`, excluding those from the schema named `pipeline_analysis`
@@ -111,13 +111,9 @@ sorted_tables = list(restricted_tables)
 schema_prefix_update_mapper = {'pipeline_lab': 'cloned_lab',
                                'pipeline_session': 'cloned_session',
                                'pipeline_ephys': 'cloned_ephys'}
-python_code = generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper)
+schemas_code = generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper, save_dir='.')
 
-print(python_code)
-
-with open('cloned_pipeline.py', 'wt') as f:
-    f.write(python_code)
-
+print(schemas_code['cloned_ephys'])
 ```
 
 As next steps, you can also use the data copy utility above to migrate some data from the original pipeline to the new cloned pipeline.

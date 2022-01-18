@@ -1,5 +1,6 @@
 import datajoint as dj
 import re
+import pathlib
 
 
 def find_part_table_ancestors(table, ancestors={}, verbose=False):
@@ -13,10 +14,12 @@ def find_part_table_ancestors(table, ancestors={}, verbose=False):
         ancestors_diagram = dj.Diagram(part_table) - 999
         ancestors[part_table.full_table_name] = part_table
         for full_table_name in ancestors_diagram.topological_sort():
+            if full_table_name.isdigit():
+                continue
             if full_table_name == part_table.full_table_name or full_table_name in ancestors:
                 continue
             if verbose:
-                print(f'\t...stepping to {full_table_name}')
+                print(f'\t\tstep into {full_table_name}')
             free_tbl = dj.FreeTable(dj.conn(), full_table_name)
             ancestors = find_part_table_ancestors(free_tbl, ancestors=ancestors)
     return ancestors
@@ -52,8 +55,10 @@ def get_restricted_diagram_tables(restriction_tables,
     ancestors_diagram = diagram - 999
     ancestors = {}
     for ancestor_table_name in ancestors_diagram.topological_sort():
+        if ancestor_table_name.isdigit():
+            continue
         if verbose:
-            print(f'\t...stepping to {ancestor_table_name}')
+            print(f'\tstep into to {ancestor_table_name}')
         ancestor_table = dj.FreeTable(dj.conn(), ancestor_table_name)
 
         # check for allow-list and block-list
@@ -61,7 +66,7 @@ def get_restricted_diagram_tables(restriction_tables,
                 or (schema_block_list and ancestor_table.database in schema_block_list):
             continue
 
-        ancestors = find_part_table_ancestors(ancestor_table, ancestors)
+        ancestors = find_part_table_ancestors(ancestor_table, ancestors, verbose=verbose)
 
         # ancestors[full_table_name] = free_table
         # for part_table in free_table.parts(as_objects=True):
@@ -71,8 +76,10 @@ def get_restricted_diagram_tables(restriction_tables,
     descendants_diagram = diagram + 999
     descendants = {}
     for descendant_table_name in descendants_diagram.topological_sort():
+        if descendant_table_name.isdigit():
+            continue
         if verbose:
-            print(f'\t...stepping to {descendant_table_name}')
+            print(f'\tstep into to {descendant_table_name}')
         descendant_table = dj.FreeTable(dj.conn(), descendant_table_name)
 
         # check for allow-list and block-list
@@ -80,7 +87,7 @@ def get_restricted_diagram_tables(restriction_tables,
                 or (schema_block_list and descendant_table.database in schema_block_list):
             continue
 
-        descendants = find_part_table_ancestors(descendant_table, descendants)
+        descendants = find_part_table_ancestors(descendant_table, descendants, verbose=verbose)
 
     # descendants = {tbl.full_table_name: tbl
     #                for tbl in restriction_table.descendants(as_objects=True)
@@ -90,7 +97,8 @@ def get_restricted_diagram_tables(restriction_tables,
     return {**ancestors, **descendants}
 
 
-def generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper={}):
+def generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper={},
+                                     verbose=False, save_dir=None):
     """
     Generate a .py string containing the code to instantiate DataJoint tables
         from the given list of "sorted_tables", with schema names modification provided in
@@ -100,24 +108,29 @@ def generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper=
     :param schema_prefix_update_mapper: Dict - mapper to update schema name, e.g.:
         schema_prefix_update_mapper = {'main_ephys': 'cloned_ephys',
                                        'main_analysis': 'clone_analysis'}
-    :return: str
+    :return: dict
     """
     table_names = [dj.utils.to_camel_case(t.split('.')[-1].strip('`')) for t in sorted_tables]
 
-    # FIXME: confirm topological sort of schemas
     sorted_schemas = {}
     sorted_schemas = list({t.split('.')[0].strip('`'): None for t in sorted_tables
-                      if t.split('.')[0].strip('`') not in sorted_schemas})
+                           if t.split('.')[0].strip('`') not in sorted_schemas})
 
-    definition_str = 'import datajoint as dj\n\n\n'
+    schemas_code = {}
     for schema_name in sorted_schemas:
-        definition_str += f'-------------- {schema_prefix_update_mapper.get(schema_name, schema_name)} -------------- \n\n\n'
+        if verbose:
+            print(f'\tProcessing {schema_name}')
+
+        definition_str = 'import datajoint as dj\n\n\n'
+
+        cloned_schema_name = schema_prefix_update_mapper.get(schema_name, schema_name)
+
+        definition_str += f'-------------- {cloned_schema_name} -------------- \n\n\n'
 
         schema_definition = dj.create_virtual_module(schema_name, schema_name).schema.save()
 
         schema_str = re.search(r'schema = .*', schema_definition).group()
-        schema_str = schema_str.replace(schema_name,
-                                    schema_prefix_update_mapper.get(schema_name, schema_name))
+        schema_str = schema_str.replace(schema_name, cloned_schema_name)
         definition_str += f'{schema_str}\n\n'
 
         # update schema names for virtual modules
@@ -138,4 +151,13 @@ def generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper=
             if table_name in table_names:
                 definition_str += f'{table_definition}\n\n\n'
 
-    return definition_str
+        schemas_code[cloned_schema_name] = definition_str
+
+    if save_dir:
+        save_dir = pathlib.Path(save_dir)
+        save_dir.mkdir(exist_ok=True, parents=True)
+        for cloned_schema_name, schema_definition_str in schemas_code.items():
+            with open(save_dir / f'{cloned_schema_name}.py', 'wt') as f:
+                f.write(schema_definition_str)
+
+    return schemas_code
