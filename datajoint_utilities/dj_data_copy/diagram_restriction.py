@@ -125,7 +125,7 @@ def generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper=
 
         cloned_schema_name = schema_prefix_update_mapper.get(schema_name, schema_name)
 
-        definition_str += f'-------------- {cloned_schema_name} -------------- \n\n\n'
+        definition_str += f'# -------------- {cloned_schema_name} -------------- \n\n\n'
 
         schema_definition = dj.create_virtual_module(schema_name, schema_name).schema.save()
 

@@ -7,7 +7,9 @@ Utility for data copy/migration between schemas and tables
 """
 
 
-def migrate_schema(origin_schema, destination_schema):
+def migrate_schema(origin_schema, destination_schema,
+                   restriction={},
+                   allow_missing_destination_tables=False):
     """
     Data migration from all tables from `origin_schema` to `destination_schema`, in topologically sorted order
     """
@@ -20,16 +22,25 @@ def migrate_schema(origin_schema, destination_schema):
 
     print(f'Data migration for schema: {origin_schema.schema.database}')
 
-    for tbl_name in tbl_names:
+    def get_table(schema_object, table_object_name):
         if '.' in tbl_name:
-            master_name, part_name = tbl_name.split('.')
-            orig_tbl = getattr(getattr(origin_schema, master_name), part_name)
-            dest_tbl = getattr(getattr(destination_schema, master_name), part_name)
+            master_name, part_name = table_object_name.split('.')
+            return getattr(getattr(schema_object, master_name), part_name)
         else:
-            orig_tbl = getattr(origin_schema, tbl_name)
-            dest_tbl = getattr(destination_schema, tbl_name)
+            return getattr(schema_object, table_object_name)
 
-        transferred_count, to_transfer_count = migrate_table(orig_tbl, dest_tbl)
+    for tbl_name in tbl_names:
+        orig_tbl = get_table(origin_schema, tbl_name)
+
+        try:
+            dest_tbl = get_table(destination_schema, tbl_name)
+        except AttributeError as e:
+            if allow_missing_destination_tables:
+                continue
+            else:
+                raise e
+
+        transferred_count, to_transfer_count = migrate_table(orig_tbl & restriction, dest_tbl)
         total_transferred_count += transferred_count
         total_to_transfer_count += to_transfer_count
 
@@ -67,6 +78,7 @@ def migrate_table(orig_tbl, dest_tbl):
     else:
         transferred_count = to_transfer_count
 
-    print(f'\tData migration for table {orig_tbl.__name__}:'
+    table_name = '.'.join([dj.utils.to_camel_case(s) for s in orig_tbl.table_name.strip('`').split('__') if s])
+    print(f'\tData migration for table {table_name}:'
           f' {transferred_count}/{to_transfer_count} records')
     return transferred_count, to_transfer_count
