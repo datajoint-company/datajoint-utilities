@@ -12,7 +12,6 @@ def find_part_table_ancestors(table, ancestors={}, verbose=False):
     ancestors[table.full_table_name] = free_table
     for part_table in free_table.parts(as_objects=True):
         ancestors_diagram = dj.Diagram(part_table) - 999
-        ancestors[part_table.full_table_name] = part_table
         for full_table_name in ancestors_diagram.topological_sort():
             if full_table_name.isdigit():
                 continue
@@ -22,12 +21,17 @@ def find_part_table_ancestors(table, ancestors={}, verbose=False):
                 print(f'\t\tstep into {full_table_name}')
             free_tbl = dj.FreeTable(dj.conn(), full_table_name)
             ancestors = find_part_table_ancestors(free_tbl, ancestors=ancestors)
+        ancestors[part_table.full_table_name] = part_table
+    # unite master-part below the parts' ancestors
+    ancestors[table.full_table_name] = free_table
+    ancestors.update({p.full_table_name: p for p in free_table.parts(as_objects=True)})
     return ancestors
 
 
 def get_restricted_diagram_tables(restriction_tables,
                                   schema_allow_list=None,
                                   schema_block_list=None,
+                                  ancestors_only=False,
                                   verbose=False):
     """
     Search the full pipeline diagram to find the set of ancestor and descendant
@@ -35,6 +39,7 @@ def get_restricted_diagram_tables(restriction_tables,
     :param restriction_tables: list of datajoint tables to restrict the diagram
     :param schema_allow_list: list of schema names to allow in the search
     :param schema_block_list: list of schema names to ignore in the search
+    :param ancestors_only: bool - search for ancestors only
     :param verbose:
     :return: dictionary of all ancestor and descendant tables
     """
@@ -51,9 +56,10 @@ def get_restricted_diagram_tables(restriction_tables,
         else:
             diagram += dj.Diagram(restriction_table)
 
+    ancestors, descendants = {}, {}
+
     # walk up to search for all ancestors
     ancestors_diagram = diagram - 999
-    ancestors = {}
     for ancestor_table_name in ancestors_diagram.topological_sort():
         if ancestor_table_name.isdigit():
             continue
@@ -68,31 +74,22 @@ def get_restricted_diagram_tables(restriction_tables,
 
         ancestors = find_part_table_ancestors(ancestor_table, ancestors, verbose=verbose)
 
-        # ancestors[full_table_name] = free_table
-        # for part_table in free_table.parts(as_objects=True):
-        #     ancestors[part_table.full_table_name] = part_table
-
     # walk down to find all descendants
-    descendants_diagram = diagram + 999
-    descendants = {}
-    for descendant_table_name in descendants_diagram.topological_sort():
-        if descendant_table_name.isdigit():
-            continue
-        if verbose:
-            print(f'\tstep into to {descendant_table_name}')
-        descendant_table = dj.FreeTable(dj.conn(), descendant_table_name)
+    if not ancestors_only:
+        descendants_diagram = diagram + 999
+        for descendant_table_name in descendants_diagram.topological_sort():
+            if descendant_table_name.isdigit():
+                continue
+            if verbose:
+                print(f'\tstep into to {descendant_table_name}')
+            descendant_table = dj.FreeTable(dj.conn(), descendant_table_name)
 
-        # check for allow-list and block-list
-        if (schema_allow_list and descendant_table.database not in schema_allow_list)\
-                or (schema_block_list and descendant_table.database in schema_block_list):
-            continue
+            # check for allow-list and block-list
+            if (schema_allow_list and descendant_table.database not in schema_allow_list)\
+                    or (schema_block_list and descendant_table.database in schema_block_list):
+                continue
 
-        descendants = find_part_table_ancestors(descendant_table, descendants, verbose=verbose)
-
-    # descendants = {tbl.full_table_name: tbl
-    #                for tbl in restriction_table.descendants(as_objects=True)
-    #                if ((schema_allow_list and tbl.database in schema_allow_list)
-    #                    and (schema_block_list and tbl.database not in schema_block_list))}
+            descendants = find_part_table_ancestors(descendant_table, descendants, verbose=verbose)
 
     return {**ancestors, **descendants}
 
@@ -161,3 +158,4 @@ def generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper=
                 f.write(schema_definition_str)
 
     return schemas_code
+
