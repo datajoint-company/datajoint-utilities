@@ -9,7 +9,8 @@ Utility for data copy/migration between schemas and tables
 
 def migrate_schema(origin_schema, destination_schema,
                    restriction={},
-                   allow_missing_destination_tables=False):
+                   allow_missing_destination_tables=False,
+                   force_fetch=False):
     """
     Data migration from all tables from `origin_schema` to `destination_schema`, in topologically sorted order
     """
@@ -40,7 +41,8 @@ def migrate_schema(origin_schema, destination_schema,
             else:
                 raise e
 
-        transferred_count, to_transfer_count = migrate_table(orig_tbl & restriction, dest_tbl)
+        transferred_count, to_transfer_count = migrate_table(
+            orig_tbl & restriction, dest_tbl, force_fetch=force_fetch)
         total_transferred_count += transferred_count
         total_to_transfer_count += to_transfer_count
 
@@ -48,9 +50,11 @@ def migrate_schema(origin_schema, destination_schema,
     return total_transferred_count, total_to_transfer_count
 
 
-def migrate_table(orig_tbl, dest_tbl):
+def migrate_table(orig_tbl, dest_tbl, force_fetch=True):
     """
     Migrate data from `orig_tbl` to `dest_tbl`
+
+    + force_fetch: bool - force the fetch and reinsert instead of server side transfer
     """
     table_name = '.'.join([dj.utils.to_camel_case(s) for s in orig_tbl.table_name.strip('`').split('__') if s])
     print(f'\tData migration for table {table_name}:', end='')
@@ -72,7 +76,7 @@ def migrate_table(orig_tbl, dest_tbl):
     try:
         if to_transfer_count:
             entries = ((orig_tbl & records_to_transfer).fetch(as_dict=True)
-                       if has_external or is_different_server
+                       if has_external or is_different_server or force_fetch
                        else (orig_tbl & records_to_transfer))
             dest_tbl.insert(entries, skip_duplicates=True, allow_direct_insert=True)
     except dj.DataJointError as e:
