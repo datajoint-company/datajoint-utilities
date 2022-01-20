@@ -10,10 +10,17 @@ Utility for data copy/migration between schemas and tables
 def migrate_schema(origin_schema, destination_schema,
                    restriction={},
                    table_block_list=[],
-                   allow_missing_destination_tables=False,
+                   allow_missing_destination_tables=True,
                    force_fetch=False):
     """
     Data migration from all tables from `origin_schema` to `destination_schema`, in topologically sorted order
+
+    :param origin_schema - schema to transfer the data from
+    :param destination_schema - schema to transfer the data to
+    :param restriction - DataJoint restriction to apply to the tables in origin_schema for restricted data transfer
+    :param table_block_list - skip data transfer for these tables
+    :param allow_missing_destination_tables - allow for missing tables in the destination_schema compared to the origin_schema
+    :param force_fetch - bool - force the fetch and reinsert instead of server side transfer
     """
     total_to_transfer_count = 0
     total_transferred_count = 0
