@@ -3,13 +3,24 @@ import numpy as np
 
 
 """
-Utility for same connection migration of data between schema and table
+Utility for data copy/migration between schemas and tables
 """
 
 
-def migrate_schema(origin_schema, destination_schema):
+def migrate_schema(origin_schema, destination_schema,
+                   restriction={},
+                   table_block_list=[],
+                   allow_missing_destination_tables=True,
+                   force_fetch=False):
     """
     Data migration from all tables from `origin_schema` to `destination_schema`, in topologically sorted order
+
+    :param origin_schema - schema to transfer the data from
+    :param destination_schema - schema to transfer the data to
+    :param restriction - DataJoint restriction to apply to the tables in origin_schema for restricted data transfer
+    :param table_block_list - skip data transfer for these tables
+    :param allow_missing_destination_tables - allow for missing tables in the destination_schema compared to the origin_schema
+    :param force_fetch - bool - force the fetch and reinsert instead of server side transfer
     """
     total_to_transfer_count = 0
     total_transferred_count = 0
@@ -20,16 +31,29 @@ def migrate_schema(origin_schema, destination_schema):
 
     print(f'Data migration for schema: {origin_schema.schema.database}')
 
-    for tbl_name in tbl_names:
+    def get_table(schema_object, table_object_name):
         if '.' in tbl_name:
-            master_name, part_name = tbl_name.split('.')
-            orig_tbl = getattr(getattr(origin_schema, master_name), part_name)
-            dest_tbl = getattr(getattr(destination_schema, master_name), part_name)
+            master_name, part_name = table_object_name.split('.')
+            return getattr(getattr(schema_object, master_name), part_name)
         else:
-            orig_tbl = getattr(origin_schema, tbl_name)
-            dest_tbl = getattr(destination_schema, tbl_name)
+            return getattr(schema_object, table_object_name)
 
-        transferred_count, to_transfer_count = migrate_table(orig_tbl, dest_tbl)
+    for tbl_name in tbl_names:
+        if tbl_name in table_block_list:
+            continue
+
+        orig_tbl = get_table(origin_schema, tbl_name)
+
+        try:
+            dest_tbl = get_table(destination_schema, tbl_name)
+        except AttributeError as e:
+            if allow_missing_destination_tables:
+                continue
+            else:
+                raise e
+
+        transferred_count, to_transfer_count = migrate_table(
+            orig_tbl & restriction, dest_tbl, force_fetch=force_fetch)
         total_transferred_count += transferred_count
         total_to_transfer_count += to_transfer_count
 
@@ -37,10 +61,15 @@ def migrate_schema(origin_schema, destination_schema):
     return total_transferred_count, total_to_transfer_count
 
 
-def migrate_table(orig_tbl, dest_tbl):
+def migrate_table(orig_tbl, dest_tbl, force_fetch=True):
     """
     Migrate data from `orig_tbl` to `dest_tbl`
+
+    + force_fetch: bool - force the fetch and reinsert instead of server side transfer
     """
+    table_name = '.'.join([dj.utils.to_camel_case(s) for s in orig_tbl.table_name.strip('`').split('__') if s])
+    print(f'\tData migration for table {table_name}:', end='')
+
     # check if the transfer is between different database servers (different db connections)
     is_different_server = orig_tbl.connection.conn_info['host'] != dest_tbl.connection.conn_info['host']
 
@@ -58,7 +87,7 @@ def migrate_table(orig_tbl, dest_tbl):
     try:
         if to_transfer_count:
             entries = ((orig_tbl & records_to_transfer).fetch(as_dict=True)
-                       if has_external or is_different_server
+                       if has_external or is_different_server or force_fetch
                        else (orig_tbl & records_to_transfer))
             dest_tbl.insert(entries, skip_duplicates=True, allow_direct_insert=True)
     except dj.DataJointError as e:
@@ -67,6 +96,5 @@ def migrate_table(orig_tbl, dest_tbl):
     else:
         transferred_count = to_transfer_count
 
-    print(f'\tData migration for table {orig_tbl.__name__}:'
-          f' {transferred_count}/{to_transfer_count} records')
+    print(f'{transferred_count}/{to_transfer_count} records')
     return transferred_count, to_transfer_count
