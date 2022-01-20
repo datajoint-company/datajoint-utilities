@@ -46,10 +46,10 @@ def get_restricted_diagram_tables(restriction_tables,
 
     diagram = None
     for restriction_table in restriction_tables:
-        try:
-            restriction_table().definition
-        except NotImplementedError:
-            raise NotImplementedError('Unable to handle virtual table')
+        # try:
+        #     restriction_table().definition
+        # except NotImplementedError:
+        #     raise NotImplementedError('Unable to handle virtual table')
 
         if diagram is None:
             diagram = dj.Diagram(restriction_table)
@@ -105,15 +105,15 @@ def generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper=
     :param schema_prefix_update_mapper: Dict - mapper to update schema name, e.g.:
         schema_prefix_update_mapper = {'main_ephys': 'cloned_ephys',
                                        'main_analysis': 'clone_analysis'}
-    :return: dict
+    :return: (schemas_code, tables_definition)
+        + schemas_code: dictionary containing python code for each schema
+        + tables_definition: dictionary containing definition for all tables in each schema
     """
-    table_names = [dj.utils.to_camel_case(t.split('.')[-1].strip('`')) for t in sorted_tables]
-
     sorted_schemas = {}
     sorted_schemas = list({t.split('.')[0].strip('`'): None for t in sorted_tables
                            if t.split('.')[0].strip('`') not in sorted_schemas})
 
-    schemas_code = {}
+    schemas_code, schemas_table_definition = {}, {}
     for schema_name in sorted_schemas:
         if verbose:
             print(f'\tProcessing {schema_name}')
@@ -143,10 +143,22 @@ def generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper=
         tables_definition = [table_definition.replace('\n\n\n', '')
                              for table_definition in re.findall(r'@schema.*?\n\n\n', schema_definition, re.DOTALL)]
         tables_definition.append(re.search(r'.*(@schema.*$)', schema_definition, re.DOTALL).groups()[0])
+
+        table_definition_dict = {}
+        schemas_table_definition[cloned_schema_name] = {}
         for table_definition in tables_definition:
             table_name = re.search(r'class\s(\w+)\((.+)\):', table_definition).groups()[0]
-            if table_name in table_names:
-                definition_str += f'{table_definition}\n\n\n'
+            table_definition_dict[table_name] = table_definition
+
+        # filter by the specified "sorted_tables"
+        table_names = [dj.utils.to_camel_case(t.split('.')[-1].strip('`'))
+                       for t in sorted_tables
+                       if t.startswith(f'`{schema_name}`') and
+                       not re.match(r'(?P<master>`\w+`.`#?\w+)__\w+`', t)]
+
+        for table_name in table_names:
+            definition_str += f'{table_definition_dict[table_name]}\n\n\n'
+            schemas_table_definition[cloned_schema_name][table_name] = table_definition_dict[table_name]
 
         schemas_code[cloned_schema_name] = definition_str
 
@@ -157,5 +169,75 @@ def generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper=
             with open(save_dir / f'{cloned_schema_name}.py', 'wt') as f:
                 f.write(schema_definition_str)
 
-    return schemas_code
+    return schemas_code, schemas_table_definition
 
+
+class ClonedPipeline:
+
+    def __init__(self, diagram, schema_prefix_update_mapper={}, verbose=False):
+        assert isinstance(diagram, dj.diagram.Diagram)
+
+        self.input_diagram = diagram
+        self.schema_prefix_update_mapper = schema_prefix_update_mapper
+        self.verbose = verbose
+
+        self._restricted_tables = None
+        self._restricted_diagram = None
+        self._code = None
+        self._tables_definition = None
+
+    @property
+    def restricted_tables(self):
+        if self._restricted_tables is None:
+            self._restricted_tables = self.find_restricted_diagram()
+        return self._restricted_tables
+
+    @property
+    def restricted_diagram(self):
+        if self._restricted_diagram is None:
+            diagram = self.input_diagram
+            for free_table in self.restricted_tables.values():
+                diagram += free_table
+            self._restricted_diagram = diagram
+        return self._restricted_diagram
+
+    @property
+    def code(self):
+        if self._code is None:
+            self._code, self._tables_definition = generate_schemas_definition_code(
+                list(self.restricted_tables),
+                schema_prefix_update_mapper=self.schema_prefix_update_mapper,
+                verbose=self.verbose)
+        return self._code
+
+    @property
+    def tables_definition(self):
+        if self._code is None:
+            self._code, self._tables_definition = generate_schemas_definition_code(
+                list(self.restricted_tables),
+                schema_prefix_update_mapper=self.schema_prefix_update_mapper,
+                verbose=self.verbose)
+        return self._tables_definition
+
+    def find_restricted_diagram(self):
+        # walk up to search for all ancestors
+        ancestors = {}
+        ancestors_diagram = self.input_diagram - 999
+        for ancestor_table_name in ancestors_diagram.topological_sort():
+            if ancestor_table_name.isdigit():
+                continue
+            if self.verbose:
+                print(f'\tstep into to {ancestor_table_name}')
+            ancestor_table = dj.FreeTable(dj.conn(), ancestor_table_name)
+
+            ancestors = find_part_table_ancestors(ancestor_table, ancestors,
+                                                  verbose=self.verbose)
+
+        return ancestors
+
+    def save_code(self, save_dir):
+        save_dir = pathlib.Path(save_dir)
+        save_dir.mkdir(exist_ok=True, parents=True)
+        for cloned_schema_name, schema_definition_str in self.code.items():
+            with open(save_dir / f'{cloned_schema_name}.py', 'wt') as f:
+                f.write(schema_definition_str)
