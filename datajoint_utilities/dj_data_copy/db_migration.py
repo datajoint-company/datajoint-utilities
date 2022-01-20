@@ -52,6 +52,9 @@ def migrate_table(orig_tbl, dest_tbl):
     """
     Migrate data from `orig_tbl` to `dest_tbl`
     """
+    table_name = '.'.join([dj.utils.to_camel_case(s) for s in orig_tbl.table_name.strip('`').split('__') if s])
+    print(f'\tData migration for table {table_name}:', end='')
+
     # check if the transfer is between different database servers (different db connections)
     is_different_server = orig_tbl.connection.conn_info['host'] != dest_tbl.connection.conn_info['host']
 
@@ -78,7 +81,5 @@ def migrate_table(orig_tbl, dest_tbl):
     else:
         transferred_count = to_transfer_count
 
-    table_name = '.'.join([dj.utils.to_camel_case(s) for s in orig_tbl.table_name.strip('`').split('__') if s])
-    print(f'\tData migration for table {table_name}:'
-          f' {transferred_count}/{to_transfer_count} records')
+    print(f'{transferred_count}/{to_transfer_count} records')
     return transferred_count, to_transfer_count
