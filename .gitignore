@@ -74,6 +74,7 @@ target/
 
 # VSCode
 .vscode
+*.code-workspace
 
 # pyenv
 .python-version
