@@ -9,6 +9,7 @@ Utility for data copy/migration between schemas and tables
 
 def migrate_schema(origin_schema, destination_schema,
                    restriction={},
+                   table_block_list=[],
                    allow_missing_destination_tables=False,
                    force_fetch=False):
     """
@@ -31,6 +32,9 @@ def migrate_schema(origin_schema, destination_schema,
             return getattr(schema_object, table_object_name)
 
     for tbl_name in tbl_names:
+        if tbl_name in table_block_list:
+            continue
+
         orig_tbl = get_table(origin_schema, tbl_name)
 
         try:
