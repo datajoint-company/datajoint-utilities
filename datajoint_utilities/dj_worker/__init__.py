@@ -21,6 +21,7 @@ import time
 import os
 import platform
 from datetime import datetime
+import argparse
 
 
 _populate_settings = {
@@ -167,3 +168,54 @@ def _clean_up(pipeline_modules, additional_error_patterns=[], stale_hours=24):
             elapsed_days='TIMESTAMPDIFF(HOUR, timestamp, NOW())')
                       & f'elapsed_days > {stale_hours}')
         (pipeline_module.schema.jobs & stale_jobs).delete()
+
+
+# arg-parser for usage as CLI
+
+# combine different formatters
+class ArgumentDefaultsRawDescriptionHelpFormatter(
+    argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
+    pass
+
+
+def parse_args(args):
+    """
+    Parse command line parameters
+
+    :param args: command line parameters as list of strings (for example  ``["--help"]``)
+    :type args: List[str]
+    :return: `argparse.Namespace`: command line parameters namespace
+    :rtype: obj
+    """
+
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=ArgumentDefaultsRawDescriptionHelpFormatter
+    )
+
+    parser.add_argument(
+        "worker_name",
+        help="Select the worker to run",
+        type=str
+    )
+
+    parser.add_argument(
+        "-d",
+        "--duration",
+        dest="duration",
+        help="Run duration of the entire process",
+        type=int,
+        metavar="INT",
+        default=-1,
+    )
+
+    parser.add_argument(
+        "-s",
+        "--sleep",
+        dest="sleep",
+        help="Sleep time between subsequent runs",
+        type=int,
+        metavar="INT",
+        default=60,
+    )
+
+    return parser.parse_args(args)

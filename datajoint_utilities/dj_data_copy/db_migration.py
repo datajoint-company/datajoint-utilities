@@ -68,7 +68,7 @@ def migrate_table(orig_tbl, dest_tbl, force_fetch=True):
     + force_fetch: bool - force the fetch and reinsert instead of server side transfer
     """
     table_name = '.'.join([dj.utils.to_camel_case(s) for s in orig_tbl.table_name.strip('`').split('__') if s])
-    print(f'\tData migration for table {table_name}:', end='')
+    print(f'\tData migration for table {table_name}: ', end='')
 
     # check if the transfer is between different database servers (different db connections)
     is_different_server = orig_tbl.connection.conn_info['host'] != dest_tbl.connection.conn_info['host']
