@@ -218,4 +218,22 @@ def parse_args(args):
         default=60,
     )
 
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        dest="loglevel",
+        help="Set loglevel to INFO",
+        action="store_const",
+        const=logging.INFO,
+    )
+
+    parser.add_argument(
+        "-vv",
+        "--very-verbose",
+        dest="loglevel",
+        help="Set loglevel to DEBUG",
+        action="store_const",
+        const=logging.DEBUG,
+    )
+
     return parser.parse_args(args)
