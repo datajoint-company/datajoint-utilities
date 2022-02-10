@@ -119,3 +119,6 @@ docker-compose.yml
 data/
 notebooks/scratch.ipynb
 notebook
+
+# misc
+**/*.DS_Store
