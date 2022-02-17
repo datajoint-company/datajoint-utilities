@@ -33,7 +33,7 @@ _populate_settings = {
 class WorkerLog(dj.Manual):
     definition = """
     # Registration of processing jobs running .populate() jobs or custom function
-    process_timestamp : datetime      # timestamp of the processing job
+    process_timestamp : datetime(6)   # timestamp of the processing job
     process           : varchar(64)
     ---
     worker_name=''    : varchar(255)  # name of the worker
@@ -216,6 +216,24 @@ def parse_args(args):
         type=int,
         metavar="INT",
         default=60,
+    )
+
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        dest="loglevel",
+        help="Set loglevel to INFO",
+        action="store_const",
+        const=logging.INFO,
+    )
+
+    parser.add_argument(
+        "-vv",
+        "--very-verbose",
+        dest="loglevel",
+        help="Set loglevel to DEBUG",
+        action="store_const",
+        const=logging.DEBUG,
     )
 
     return parser.parse_args(args)
