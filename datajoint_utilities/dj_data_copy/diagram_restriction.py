@@ -127,7 +127,7 @@ def generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper=
         schema_definition = dj.create_virtual_module(schema_name, schema_name).schema.save()
 
         schema_str = re.search(r'schema = .*', schema_definition).group()
-        schema_str = schema_str.replace(schema_name, cloned_schema_name)
+        schema_str = 'schema = dj.Schema()'  # deferred activation
         definition_str += f'{schema_str}\n\n'
 
         # update schema names for virtual modules
@@ -159,6 +159,11 @@ def generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper=
         for table_name in table_names:
             definition_str += f'{table_definition_dict[table_name]}\n\n\n'
             schemas_table_definition[cloned_schema_name][table_name] = table_definition_dict[table_name]
+
+        # schema activation
+        definition_str += f'\n\n# ---- schema activation ---- \n\n\n'
+
+        definition_str += f'schema.activate("{cloned_schema_name}")\n\n'
 
         schemas_code[cloned_schema_name] = definition_str
 

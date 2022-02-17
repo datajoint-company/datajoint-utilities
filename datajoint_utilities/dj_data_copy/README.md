@@ -102,7 +102,7 @@ restriction_tables = [subject.Subject, ephys.Unit]
 restricted_tables = get_restricted_diagram_tables(
     restriction_tables,
     schema_allow_list=None,
-    schema_block_list=['pipeline_analysis']])
+    schema_block_list=['pipeline_analysis'])
 
 list(restricted_tables)
 
