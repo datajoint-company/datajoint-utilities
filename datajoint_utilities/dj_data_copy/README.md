@@ -52,7 +52,7 @@ Utility to retrieve all ancestors and descendants associated with a given set of
 
 ```
 import datajoint as dj
-from datajoint_utilities.dj_data_copy.diagram_restriction import get_restricted_diagram_tables
+from datajoint_utilities.dj_data_copy.pipeline_cloning import get_restricted_diagram_tables
 ```
 
 Retrieve all ancestors and descendants of the tables `subject.Subject` and `ephys.Unit`, excluding those from the schema named `pipeline_analysis`
@@ -85,7 +85,7 @@ It is particularly useful to use in conjunction with the ***diagram restriction*
 
 ```
 import datajoint as dj
-from datajoint_utilities.dj_data_copy.diagram_restriction import get_restricted_diagram_tables, generate_schemas_definition_code
+from datajoint_utilities.dj_data_copy.pipeline_cloning import get_restricted_diagram_tables, generate_schemas_definition_code
 ```
 
 Retrieve all ancestors and descendants of the tables `subject.Subject` and `ephys.Unit`, excluding those from the schema named `pipeline_analysis`
@@ -120,7 +120,7 @@ print(schemas_code['cloned_ephys'])
 Or using the class `ClonedPipeline` for all of the steps above
 
 ```
-from datajoint_utilities.dj_data_copy.diagram_restriction import ClonedPipeline
+from datajoint_utilities.dj_data_copy.pipeline_cloning import ClonedPipeline
 
 diagram = dj.Diagram(subject.Subject) + dj.Diagram(ephys.Unit)
 schema_prefix_update_mapper = {'pipeline_lab': 'cloned_lab',
