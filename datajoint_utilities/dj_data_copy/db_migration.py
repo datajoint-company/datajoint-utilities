@@ -7,6 +7,8 @@ from tqdm import tqdm
 Utility for data copy/migration between schemas and tables
 """
 
+dj.blob.bypass_serialization = True
+
 
 def migrate_schema(origin_schema, destination_schema,
                    restriction={},
