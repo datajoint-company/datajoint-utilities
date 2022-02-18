@@ -1,5 +1,4 @@
 import datajoint as dj
-import numpy as np
 from tqdm import tqdm
 
 
@@ -84,8 +83,7 @@ def migrate_table(orig_tbl, dest_tbl, force_fetch=True, batch_size=None):
     is_different_server = orig_tbl.connection.conn_info['host'] != dest_tbl.connection.conn_info['host']
 
     # check if there's external datatype to be transferred
-    has_external = np.any(['@' in attr.type
-                           for attr in orig_tbl.heading.attributes.values()])
+    has_external = any("@" in attr.type for attr in orig_tbl.heading.attributes.values())
 
     if is_different_server:
         records_to_transfer = orig_tbl.proj() - (orig_tbl & dest_tbl.fetch('KEY')).proj()
