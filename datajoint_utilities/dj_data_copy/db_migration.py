@@ -112,21 +112,21 @@ def migrate_table(orig_tbl, dest_tbl, force_fetch=True, batch_size=None):
     else:
         records_to_transfer = orig_tbl.proj() - dest_tbl.proj()
 
-    do_fetch = has_external or is_different_server or force_fetch
+    must_fetch = has_external or is_different_server or force_fetch
 
     to_transfer_count = len(records_to_transfer)
     transferred_count = 0
 
     if to_transfer_count:
         try:
-            if batch_size is not None:
+            if batch_size is not None and must_fetch:
                 for i in tqdm(range(0, to_transfer_count, batch_size)):
                     entries = (orig_tbl & records_to_transfer).fetch(as_dict=True, offset=i, limit=batch_size)
                     dest_tbl.insert(entries, skip_duplicates=True, allow_direct_insert=True)
                     transferred_count += batch_size
             else:
                 entries = ((orig_tbl & records_to_transfer).fetch(as_dict=True)
-                           if do_fetch
+                           if must_fetch
                            else (orig_tbl & records_to_transfer))
                 dest_tbl.insert(entries, skip_duplicates=True, allow_direct_insert=True)
         except dj.DataJointError as e:
