@@ -94,16 +94,16 @@ def get_restricted_diagram_tables(restriction_tables,
     return {**ancestors, **descendants}
 
 
-def generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper={},
+def generate_schemas_definition_code(sorted_tables, schema_name_mapper={},
                                      verbose=False, save_dir=None):
     """
     Generate a .py string containing the code to instantiate DataJoint tables
         from the given list of "sorted_tables", with schema names modification provided in
-        "schema_prefix_update_mapper"
+        "schema_name_mapper"
 
     :param sorted_tables: List - list of tables in topologically sorted order
-    :param schema_prefix_update_mapper: Dict - mapper to update schema name, e.g.:
-        schema_prefix_update_mapper = {'main_ephys': 'cloned_ephys',
+    :param schema_name_mapper: Dict - mapper to update schema name, e.g.:
+        schema_name_mapper = {'main_ephys': 'cloned_ephys',
                                        'main_analysis': 'clone_analysis'}
     :return: (schemas_code, tables_definition)
         + schemas_code: dictionary containing python code for each schema
@@ -120,7 +120,7 @@ def generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper=
 
         definition_str = 'import datajoint as dj\n\n\n'
 
-        cloned_schema_name = schema_prefix_update_mapper.get(schema_name, schema_name)
+        cloned_schema_name = schema_name_mapper.get(schema_name, schema_name)
 
         definition_str += f'# -------------- {cloned_schema_name} -------------- \n\n\n'
 
@@ -134,7 +134,7 @@ def generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper=
         vmods_str = re.findall(r'vmod.*VirtualModule.*', schema_definition)
         for vmod_str in vmods_str:
             vmod_name = re.search(r"VirtualModule\('(\w+)', '(\w+)'\)", vmod_str).groups()[-1]
-            vmod_str = vmod_str.replace(vmod_name, schema_prefix_update_mapper.get(vmod_name, vmod_name))
+            vmod_str = vmod_str.replace(vmod_name, schema_name_mapper.get(vmod_name, vmod_name))
             definition_str += f'{vmod_str}\n'
 
         definition_str += '\n\n'
@@ -179,11 +179,11 @@ def generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper=
 
 class ClonedPipeline:
 
-    def __init__(self, diagram, schema_prefix_update_mapper={}, verbose=False):
+    def __init__(self, diagram, schema_name_mapper={}, verbose=False):
         assert isinstance(diagram, dj.diagram.Diagram)
 
         self.input_diagram = diagram
-        self.schema_prefix_update_mapper = schema_prefix_update_mapper
+        self.schema_name_mapper = schema_name_mapper
         self.verbose = verbose
 
         self._restricted_tables = None
@@ -211,7 +211,7 @@ class ClonedPipeline:
         if self._code is None:
             self._code, self._tables_definition = generate_schemas_definition_code(
                 list(self.restricted_tables),
-                schema_prefix_update_mapper=self.schema_prefix_update_mapper,
+                schema_name_mapper=self.schema_name_mapper,
                 verbose=self.verbose)
         return self._code
 
@@ -220,7 +220,7 @@ class ClonedPipeline:
         if self._code is None:
             self._code, self._tables_definition = generate_schemas_definition_code(
                 list(self.restricted_tables),
-                schema_prefix_update_mapper=self.schema_prefix_update_mapper,
+                schema_name_mapper=self.schema_name_mapper,
                 verbose=self.verbose)
         return self._tables_definition
 
