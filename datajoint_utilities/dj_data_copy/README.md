@@ -52,7 +52,7 @@ Utility to retrieve all ancestors and descendants associated with a given set of
 
 ```
 import datajoint as dj
-from datajoint_utilities.dj_data_copy.diagram_restriction import get_restricted_diagram_tables
+from datajoint_utilities.dj_data_copy.pipeline_cloning import get_restricted_diagram_tables
 ```
 
 Retrieve all ancestors and descendants of the tables `subject.Subject` and `ephys.Unit`, excluding those from the schema named `pipeline_analysis`
@@ -85,7 +85,7 @@ It is particularly useful to use in conjunction with the ***diagram restriction*
 
 ```
 import datajoint as dj
-from datajoint_utilities.dj_data_copy.diagram_restriction import get_restricted_diagram_tables, generate_schemas_definition_code
+from datajoint_utilities.dj_data_copy.pipeline_cloning import get_restricted_diagram_tables, generate_schemas_definition_code
 ```
 
 Retrieve all ancestors and descendants of the tables `subject.Subject` and `ephys.Unit`, excluding those from the schema named `pipeline_analysis`
@@ -102,17 +102,17 @@ restriction_tables = [subject.Subject, ephys.Unit]
 restricted_tables = get_restricted_diagram_tables(
     restriction_tables,
     schema_allow_list=None,
-    schema_block_list=['pipeline_analysis']])
+    schema_block_list=['pipeline_analysis'])
 
 list(restricted_tables)
 
 # generate source code to instantiate clone pipeline
 sorted_tables = list(restricted_tables)
-schema_prefix_update_mapper = {'pipeline_lab': 'cloned_lab',
+schema_name_mapper = {'pipeline_lab': 'cloned_lab',
                                'pipeline_session': 'cloned_session',
                                'pipeline_ephys': 'cloned_ephys'}
 
-schemas_code, tables_def = generate_schemas_definition_code(sorted_tables, schema_prefix_update_mapper, save_dir='.')
+schemas_code, tables_def = generate_schemas_definition_code(sorted_tables, schema_name_mapper, save_dir='.')
 
 print(schemas_code['cloned_ephys'])
 ```
@@ -120,14 +120,14 @@ print(schemas_code['cloned_ephys'])
 Or using the class `ClonedPipeline` for all of the steps above
 
 ```
-from datajoint_utilities.dj_data_copy.diagram_restriction import ClonedPipeline
+from datajoint_utilities.dj_data_copy.pipeline_cloning import ClonedPipeline
 
 diagram = dj.Diagram(subject.Subject) + dj.Diagram(ephys.Unit)
-schema_prefix_update_mapper = {'pipeline_lab': 'cloned_lab',
-                               'pipeline_session': 'cloned_session',
-                               'pipeline_ephys': 'cloned_ephys'}
+schema_name_mapper = {'pipeline_lab': 'cloned_lab',
+                      'pipeline_session': 'cloned_session',
+                      'pipeline_ephys': 'cloned_ephys'}
 
-cloned_pipeline = ClonedPipeline(diagram, schema_prefix_update_mapper, verbose=True)
+cloned_pipeline = ClonedPipeline(diagram, schema_name_mapper, verbose=True)
 
 cloned_pipeline.restricted_tables
 cloned_pipeline.restricted_diagram

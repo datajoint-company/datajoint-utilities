@@ -177,7 +177,7 @@ class DataJointWorker:
             time.sleep(self._sleep_duration)
 
 
-def _clean_up(pipeline_modules, additional_error_patterns=[], stale_hours=24):
+def _clean_up(pipeline_modules, additional_error_patterns=[]):
     """
     Routine to clear entries from the jobs table that are:
     + generic-type error jobs
@@ -205,9 +205,11 @@ def _clean_up(pipeline_modules, additional_error_patterns=[], stale_hours=24):
             ]
         ).delete()
         # clear stale "reserved" jobs
-        stale_jobs = (pipeline_module.schema.jobs & 'status = "reserved"').proj(
-            elapsed_days="TIMESTAMPDIFF(HOUR, timestamp, NOW())"
-        ) & f"elapsed_days > {stale_hours}"
+        current_connections = [v[0] for v in dj.conn().query(
+            'SELECT id FROM information_schema.processlist WHERE id <> CONNECTION_ID() ORDER BY id')]
+        stale_jobs = (pipeline_module.schema.jobs
+                      & 'status = "reserved"'
+                      & f'connection_id NOT IN {tuple(current_connections)}')
         (pipeline_module.schema.jobs & stale_jobs).delete()
 
 

@@ -1,9 +1,11 @@
 import datajoint as dj
-import numpy as np
+from tqdm import tqdm
 
 """
 Utility for data copy/migration between schemas and tables
 """
+
+dj.blob.bypass_serialization = True
 
 
 def migrate_schema(
@@ -13,6 +15,7 @@ def migrate_schema(
     table_block_list=[],
     allow_missing_destination_tables=True,
     force_fetch=False,
+    batch_size=None
 ):
     """
     Data migration from all tables from `origin_schema` to `destination_schema`, in topologically sorted order
@@ -23,6 +26,8 @@ def migrate_schema(
     :param table_block_list - skip data transfer for these tables
     :param allow_missing_destination_tables - allow for missing tables in the destination_schema compared to the origin_schema
     :param force_fetch - bool - force the fetch and reinsert instead of server side transfer
+    :param batch_size: int - do the data transfer in batch - with specified batch_size
+        (if None - transfer all at once)
     """
     total_to_transfer_count = 0
     total_transferred_count = 0
@@ -62,7 +67,7 @@ def migrate_schema(
                 raise e
 
         transferred_count, to_transfer_count = migrate_table(
-            orig_tbl & restriction, dest_tbl, force_fetch=force_fetch
+            orig_tbl & restriction, dest_tbl, force_fetch=force_fetch, batch_size=batch_size
         )
         total_transferred_count += transferred_count
         total_to_transfer_count += to_transfer_count
@@ -73,11 +78,15 @@ def migrate_schema(
     return total_transferred_count, total_to_transfer_count
 
 
-def migrate_table(orig_tbl, dest_tbl, force_fetch=True):
+def migrate_table(orig_tbl, dest_tbl, force_fetch=True, batch_size=None):
     """
     Migrate data from `orig_tbl` to `dest_tbl`
 
-    + force_fetch: bool - force the fetch and reinsert instead of server side transfer
+    :param orig_tbl: datajoint table to copy data from
+    :param dest_tbl: datajoint table to copy data to
+    :param force_fetch: bool - force the fetch and reinsert instead of server side transfer
+    :param batch_size: int - do the data transfer in batch - with specified batch_size
+        (if None - transfer all at once)
     """
     table_name = ".".join(
         [
@@ -94,9 +103,7 @@ def migrate_table(orig_tbl, dest_tbl, force_fetch=True):
     )
 
     # check if there's external datatype to be transferred
-    has_external = np.any(
-        ["@" in attr.type for attr in orig_tbl.heading.attributes.values()]
-    )
+    has_external = any("@" in attr.type for attr in orig_tbl.heading.attributes.values())
 
     if is_different_server:
         records_to_transfer = (
@@ -105,21 +112,26 @@ def migrate_table(orig_tbl, dest_tbl, force_fetch=True):
     else:
         records_to_transfer = orig_tbl.proj() - dest_tbl.proj()
 
-    to_transfer_count = len(records_to_transfer)
+    must_fetch = has_external or is_different_server or force_fetch
 
-    try:
-        if to_transfer_count:
-            entries = (
-                (orig_tbl & records_to_transfer).fetch(as_dict=True)
-                if has_external or is_different_server or force_fetch
-                else (orig_tbl & records_to_transfer)
-            )
-            dest_tbl.insert(entries, skip_duplicates=True, allow_direct_insert=True)
-    except dj.DataJointError as e:
-        print(f"\tData copy error: {str(e)}")
-        transferred_count = 0
-    else:
-        transferred_count = to_transfer_count
+    to_transfer_count = len(records_to_transfer)
+    transferred_count = 0
+
+    if to_transfer_count:
+        try:
+            if batch_size is not None and must_fetch:
+                for i in tqdm(range(0, to_transfer_count, batch_size)):
+                    entries = (orig_tbl & records_to_transfer).fetch(as_dict=True, offset=i, limit=batch_size)
+                    dest_tbl.insert(entries, skip_duplicates=True, allow_direct_insert=True)
+                    transferred_count += batch_size
+            else:
+                entries = ((orig_tbl & records_to_transfer).fetch(as_dict=True)
+                           if must_fetch
+                           else (orig_tbl & records_to_transfer))
+                dest_tbl.insert(entries, skip_duplicates=True, allow_direct_insert=True)
+                transferred_count = to_transfer_count
+        except dj.DataJointError as e:
+            print(f'\tData copy error: {str(e)}')
 
     print(f"{transferred_count}/{to_transfer_count} records")
     return transferred_count, to_transfer_count
