@@ -129,10 +129,9 @@ def migrate_table(orig_tbl, dest_tbl, force_fetch=True, batch_size=None):
                            if must_fetch
                            else (orig_tbl & records_to_transfer))
                 dest_tbl.insert(entries, skip_duplicates=True, allow_direct_insert=True)
+                transferred_count = to_transfer_count
         except dj.DataJointError as e:
             print(f'\tData copy error: {str(e)}')
-        else:
-            transferred_count = to_transfer_count
 
     print(f"{transferred_count}/{to_transfer_count} records")
     return transferred_count, to_transfer_count
