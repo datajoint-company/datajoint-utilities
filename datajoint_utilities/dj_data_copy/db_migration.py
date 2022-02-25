@@ -1,11 +1,10 @@
 import datajoint as dj
-from tqdm import tqdm
 
 """
 Utility for data copy/migration between schemas and tables
 """
 
-dj.blob.bypass_serialization = True
+_bypass_serialization = dj.blob.bypass_serialization
 
 
 def migrate_schema(
@@ -53,7 +52,7 @@ def migrate_schema(
             return getattr(schema_object, table_object_name)
 
     for tbl_name in tbl_names:
-        if tbl_name in table_block_list:
+        if tbl_name.split('.')[0] in table_block_list:
             continue
 
         orig_tbl = get_table(origin_schema, tbl_name)
@@ -118,12 +117,13 @@ def migrate_table(orig_tbl, dest_tbl, force_fetch=True, batch_size=None):
     transferred_count = 0
 
     if to_transfer_count:
+        dj.blob.bypass_serialization = True
         try:
             if batch_size is not None and must_fetch:
-                for i in tqdm(range(0, to_transfer_count, batch_size)):
+                for i in range(0, to_transfer_count, batch_size):
                     entries = (orig_tbl & records_to_transfer).fetch(as_dict=True, offset=i, limit=batch_size)
                     dest_tbl.insert(entries, skip_duplicates=True, allow_direct_insert=True)
-                    transferred_count += batch_size
+                    transferred_count += len(entries)
             else:
                 entries = ((orig_tbl & records_to_transfer).fetch(as_dict=True)
                            if must_fetch
@@ -132,6 +132,7 @@ def migrate_table(orig_tbl, dest_tbl, force_fetch=True, batch_size=None):
                 transferred_count = to_transfer_count
         except dj.DataJointError as e:
             print(f'\tData copy error: {str(e)}')
+        dj.blob.bypass_serialization = _bypass_serialization
 
     print(f"{transferred_count}/{to_transfer_count} records")
     return transferred_count, to_transfer_count
