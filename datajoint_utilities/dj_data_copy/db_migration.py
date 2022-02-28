@@ -122,7 +122,7 @@ def migrate_table(orig_tbl, dest_tbl, force_fetch=True, batch_size=None):
         dj.blob.bypass_serialization = True
         try:
             if batch_size is not None and must_fetch:
-                for i in tqdm(range(0, to_transfer_count, batch_size), file=sys.stdout, desc=f'\tData migration for table {table_name}'):
+                for i in tqdm(range(0, to_transfer_count, batch_size), file=sys.stdout, desc=f'\tBatch migration for table {table_name}'):
                     entries = (orig_tbl & records_to_transfer).fetch(as_dict=True, offset=i, limit=batch_size)
                     dest_tbl.insert(entries, skip_duplicates=True, allow_direct_insert=True)
                     transferred_count += len(entries)
