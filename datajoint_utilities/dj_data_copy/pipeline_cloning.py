@@ -1,6 +1,7 @@
 import datajoint as dj
 import re
 import pathlib
+import importlib.util
 
 
 def find_part_table_ancestors(table, ancestors={}, verbose=False):
@@ -246,3 +247,50 @@ class ClonedPipeline:
         for cloned_schema_name, schema_definition_str in self.code.items():
             with open(save_dir / f'{cloned_schema_name}.py', 'wt') as f:
                 f.write(schema_definition_str)
+
+    def instantiate_pipeline(self, prompt=True):
+        print(f'You are to instantiate {len(self.code)} new schema(s):')
+        [print(f'\t{s}') for s in self.code]
+
+        if prompt and dj.utils.user_choice('Proceed?') != 'yes':
+            print('Cancelled')
+            return
+
+        cloned_schema_names = list(self.code)
+
+        max_try_count = len(cloned_schema_names)
+        try_count = 0
+        while len(cloned_schema_names) and try_count <= max_try_count:
+            try_count += 1
+            cloned_schema_name = cloned_schema_names.pop(0)
+            schema_definition_str = self.code[cloned_schema_name]
+
+            print(f'Instantiating {cloned_schema_name}...')
+
+            upstream_schemas = re.findall(r'vmod.*, \'(.*)\'', schema_definition_str)
+            if any([s in cloned_schema_names for s in upstream_schemas]):
+                print(f'\tAt least one upstream ({upstream_schemas}) not yet instantiated, skipping...')
+                cloned_schema_names.append(cloned_schema_name)
+                continue
+
+            try:
+                exec(schema_definition_str)
+            except dj.DataJointError as e:
+                print(f'\t{str(e)}')
+                cloned_schema_names.append(cloned_schema_name)
+            except Exception as e:
+                print(f'\t{str(e)}')
+                break
+            else:
+                max_try_count -= 1
+                try_count = 0
+
+        if not len(cloned_schema_names):
+            print('\nPipeline instantiation completed successfully')
+        else:
+            print('\nPipeline instantiation failed!!')
+            partial_completion = [n for n in self.code if n not in cloned_schema_names]
+            if partial_completion:
+                print('WARNING - Partial completion detected')
+                [print(f'\t{n}') for n in partial_completion]
+                print('You may want to drop the created schema(s)')

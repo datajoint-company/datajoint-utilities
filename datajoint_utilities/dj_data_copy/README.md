@@ -135,6 +135,8 @@ cloned_pipeline.code
 cloned_pipeline.tables_definition
 
 cloned_pipeline.save_code(save_dir='.')
+
+cloned_pipeline.instantiate_pipeline()
 ```
 
 
