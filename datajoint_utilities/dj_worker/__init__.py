@@ -208,7 +208,7 @@ def _clean_up(pipeline_modules, additional_error_patterns=[]):
             stale_jobs = (pipeline_module.schema.jobs
                           & 'status = "reserved"'
                           & f'connection_id NOT IN {tuple(current_connections)}')
-            (pipeline_module.schema.jobs & stale_jobs.proj()).delete()
+            (pipeline_module.schema.jobs & stale_jobs.fetch('KEY')).delete()
 
 
 # arg-parser for usage as CLI
