@@ -79,12 +79,13 @@ def migrate_schema(
     return total_transferred_count, total_to_transfer_count
 
 
-def migrate_table(orig_tbl, dest_tbl, force_fetch=True, batch_size=None):
+def migrate_table(orig_tbl, dest_tbl, restriction={}, force_fetch=True, batch_size=None):
     """
     Migrate data from `orig_tbl` to `dest_tbl`
 
     :param orig_tbl: datajoint table to copy data from
     :param dest_tbl: datajoint table to copy data to
+    :param restriction - DataJoint restriction to apply to the orig_tbl for restricted data transfer
     :param force_fetch: bool - force the fetch and reinsert instead of server side transfer
     :param batch_size: int - do the data transfer in batch - with specified batch_size
         (if None - transfer all at once)
@@ -103,13 +104,17 @@ def migrate_table(orig_tbl, dest_tbl, force_fetch=True, batch_size=None):
         orig_tbl.connection.conn_info["host"] != dest_tbl.connection.conn_info["host"]
     )
 
+    # apply restriction
+    orig_tbl &= restriction
+    dest_tbl &= restriction
+
     # check if there's external datatype to be transferred
     has_external = any("@" in attr.type for attr in orig_tbl.heading.attributes.values())
 
     if is_different_server:
         records_to_transfer = (
             orig_tbl.proj() - (orig_tbl & dest_tbl.fetch("KEY")).proj()
-        )
+        ).fetch('KEY')
     else:
         records_to_transfer = orig_tbl.proj() - dest_tbl.proj()
 
