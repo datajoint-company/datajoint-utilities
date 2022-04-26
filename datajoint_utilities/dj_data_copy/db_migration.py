@@ -68,7 +68,7 @@ def migrate_schema(
                 raise e
 
         transferred_count, to_transfer_count = migrate_table(
-            orig_tbl & restriction, dest_tbl, force_fetch=force_fetch, batch_size=batch_size
+            orig_tbl, dest_tbl, restriction=restriction, force_fetch=force_fetch, batch_size=batch_size
         )
         total_transferred_count += transferred_count
         total_to_transfer_count += to_transfer_count
