@@ -316,7 +316,7 @@ def parse_args(args):
         help="Run duration of the entire process",
         type=int,
         metavar="INT",
-        default=-1,
+        default=None,
     )
 
     parser.add_argument(
@@ -326,7 +326,7 @@ def parse_args(args):
         help="Sleep time between subsequent runs",
         type=int,
         metavar="INT",
-        default=60,
+        default=None,
     )
 
     parser.add_argument(
