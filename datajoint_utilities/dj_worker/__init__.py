@@ -17,6 +17,7 @@ import logging
 import os
 import platform
 import time
+import json
 from datetime import datetime
 
 import datajoint as dj
@@ -94,10 +95,66 @@ class WorkerLog(dj.Manual):
         return recent_jobs
 
     @classmethod
-    def delete_old_logs(cls, cutoff_days=3):
+    def delete_old_logs(cls, cutoff_days=30):
         old_jobs = (
             cls.proj(
                 elapsed_days=f'TIMESTAMPDIFF(DAY, process_timestamp, "{datetime.utcnow()}")'
+            )
+            & f"elapsed_days > {cutoff_days}"
+        )
+        if old_jobs:
+            with dj.config(safemode=False):
+                (cls & old_jobs).delete_quick()
+
+
+class ErrorLog(dj.Manual):
+    definition = """
+    # Logging of job errors
+    process           : varchar(64)
+    key_hash          : char(32)      # key hash
+    ---
+    error_timestamp   : datetime(6)   # timestamp of the processing job
+    key               : varchar(2047) # structure containing the key
+    error_message=""  : varchar(2047) # error message returned if failed
+    error_stack=null  : mediumblob    # error stack if failed
+    host              : varchar(255)  # system hostname
+    user=''           : varchar(255)  # database user
+    pid=0             : int unsigned  # system process id
+    """
+    
+    _table_name = "~error_log"
+
+    @classmethod
+    def log_error_job(cls, error_entry, schema_name, db_prefix=""):
+        # if the exact same error has been logged, just update the error record
+
+        table_name = error_entry['table_name']
+        schema_name = schema_name.strip("`").replace(db_prefix, "")
+        table_name = dj.utils.to_camel_case(table_name.strip("`"))
+        process_name = f"{schema_name}.{table_name}"
+
+        entry = {
+            "process": process_name,
+            "key_hash": error_entry['key_hash'],
+            "error_timestamp": error_entry['timestamp'],
+            "key": json.dumps(error_entry['key'], default=str),
+            "error_message": error_entry['error_message'],
+            "error_stack": error_entry['error_stack'],
+            "host": error_entry['host'],
+            "user": error_entry['user'],
+            "pid": error_entry['pid']
+        }
+        
+        if cls & {'key_hash': error_entry['key_hash']}:
+            cls.update1(entry)
+        else:
+            cls.insert1(entry)
+    
+    @classmethod
+    def delete_old_logs(cls, cutoff_days=30):
+        old_jobs = (
+            cls.proj(
+                elapsed_days=f'TIMESTAMPDIFF(DAY, error_timestamp, "{datetime.utcnow()}")'
             )
             & f"elapsed_days > {cutoff_days}"
         )
@@ -124,6 +181,7 @@ class DataJointWorker:
         self.name = worker_name
         self._worker_schema = dj.schema(worker_schema_name)
         self._worker_schema(WorkerLog)
+        self._worker_schema(ErrorLog)
 
         self._autoclear_error_patterns = autoclear_error_patterns
         self._run_duration = run_duration
@@ -168,13 +226,14 @@ class DataJointWorker:
             _clean_up(
                 self._pipeline_modules.values(),
                 additional_error_patterns=self._autoclear_error_patterns,
+                db_prefix=self._db_prefix
             )
             WorkerLog.delete_old_logs()
 
             time.sleep(self._sleep_duration)
 
 
-def _clean_up(pipeline_modules, additional_error_patterns=[]):
+def _clean_up(pipeline_modules, additional_error_patterns=[], db_prefix=""):
     """
     Routine to clear entries from the jobs table that are:
     + generic-type error jobs
@@ -182,13 +241,12 @@ def _clean_up(pipeline_modules, additional_error_patterns=[]):
     """
     _generic_errors = [
         "%Deadlock%",
-        "%DuplicateError%",
         "%Lock wait timeout%",
         "%MaxRetryError%",
         "%KeyboardInterrupt%",
         "InternalError: (1205%",
         "%SIGTERM%",
-        "LostConnectionError",
+        "%LostConnectionError%",
     ]
 
     for pipeline_module in pipeline_modules:
@@ -198,9 +256,24 @@ def _clean_up(pipeline_modules, additional_error_patterns=[]):
             & 'status = "error"'
             & [
                 f'error_message LIKE "{e}"'
-                for e in _generic_errors + additional_error_patterns
+                for e in _generic_errors
             ]
         ).delete()
+        # clear additional error patterns
+        additional_error_query = (
+            pipeline_module.schema.jobs
+            & 'status = "error"'
+            & [
+                f'error_message LIKE "{e}"'
+                for e in additional_error_patterns
+            ]
+        )
+
+        with pipeline_module.schema.jobs.connection.transaction:
+            for error_entry in additional_error_query.fetch(as_dict=True):
+                ErrorLog.log_error_job(error_entry, schema_name=pipeline_module.schema.database, db_prefix=db_prefix)
+            additional_error_query.delete()
+
         # clear stale "reserved" jobs
         current_connections = [v[0] for v in dj.conn().query(
             'SELECT id FROM information_schema.processlist WHERE id <> CONNECTION_ID() ORDER BY id')]
