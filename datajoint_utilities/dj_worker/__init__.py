@@ -206,6 +206,25 @@ class DataJointWorker:
                 f"Unable to handle processing step of type {type(process)}"
             )
 
+    def _run_once(self):
+        for process_type, process, kwargs in self._processes_to_run:
+            WorkerLog.log_process_job(
+                process, worker_name=self.name, db_prefix=self._db_prefix
+            )
+            if process_type == "dj_table":
+                process.populate(**{**_populate_settings, **kwargs})
+            elif process_type == "function":
+                process(**kwargs)
+
+        _clean_up(
+            self._pipeline_modules.values(),
+            additional_error_patterns=self._autoclear_error_patterns,
+            db_prefix=self._db_prefix
+        )
+
+        WorkerLog.delete_old_logs()
+        ErrorLog.delete_old_logs()
+
     def run(self):
         start_time = time.time()
         while (
@@ -214,21 +233,7 @@ class DataJointWorker:
             or self._run_duration < 0
         ):
 
-            for process_type, process, kwargs in self._processes_to_run:
-                WorkerLog.log_process_job(
-                    process, worker_name=self.name, db_prefix=self._db_prefix
-                )
-                if process_type == "dj_table":
-                    process.populate(**{**_populate_settings, **kwargs})
-                elif process_type == "function":
-                    process(**kwargs)
-
-            _clean_up(
-                self._pipeline_modules.values(),
-                additional_error_patterns=self._autoclear_error_patterns,
-                db_prefix=self._db_prefix
-            )
-            WorkerLog.delete_old_logs()
+            self._run_once()
 
             time.sleep(self._sleep_duration)
 
