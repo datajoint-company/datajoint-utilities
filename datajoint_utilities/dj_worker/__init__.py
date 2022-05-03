@@ -18,6 +18,7 @@ import os
 import platform
 import time
 import json
+import re
 from datetime import datetime
 
 import datajoint as dj
@@ -44,10 +45,10 @@ class WorkerLog(dj.Manual):
     _table_name = "~worker_log"
 
     @classmethod
-    def log_process_job(cls, process, worker_name="", db_prefix=""):
+    def log_process_job(cls, process, worker_name="", db_prefix=[""]):
         if isinstance(process, dj.user_tables.TableMeta):
             schema_name, table_name = process.full_table_name.split(".")
-            schema_name = schema_name.strip("`").replace(db_prefix, "")
+            schema_name = re.sub('|'.join(db_prefix), '', schema_name.strip("`"))
             table_name = dj.utils.to_camel_case(table_name.strip("`"))
             process_name = f"{schema_name}.{table_name}"
             user = process.connection.get_user()
@@ -125,11 +126,11 @@ class ErrorLog(dj.Manual):
     _table_name = "~error_log"
 
     @classmethod
-    def log_error_job(cls, error_entry, schema_name, db_prefix=""):
+    def log_error_job(cls, error_entry, schema_name, db_prefix=[""]):
         # if the exact same error has been logged, just update the error record
 
         table_name = error_entry['table_name']
-        schema_name = schema_name.strip("`").replace(db_prefix, "")
+        schema_name = re.sub('|'.join(db_prefix), '', schema_name.strip("`"))
         table_name = dj.utils.to_camel_case(table_name.strip("`"))
         process_name = f"{schema_name}.{table_name}"
 
@@ -176,7 +177,7 @@ class DataJointWorker:
         run_duration=-1,
         sleep_duration=60,
         autoclear_error_patterns=[],
-        db_prefix="",
+        db_prefix=[""],
     ):
         self.name = worker_name
         self._worker_schema = dj.schema(worker_schema_name)
@@ -186,7 +187,7 @@ class DataJointWorker:
         self._autoclear_error_patterns = autoclear_error_patterns
         self._run_duration = run_duration
         self._sleep_duration = sleep_duration
-        self._db_prefix = db_prefix
+        self._db_prefix = [db_prefix] if isinstance(db_prefix, str) else db_prefix
 
         self._processes_to_run = []
         self._pipeline_modules = {}
