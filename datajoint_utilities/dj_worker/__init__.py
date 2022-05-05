@@ -19,6 +19,7 @@ import platform
 import time
 import json
 import re
+import traceback
 from datetime import datetime
 
 import datajoint as dj
@@ -33,7 +34,7 @@ _populate_settings = {
 class WorkerLog(dj.Manual):
     definition = """
     # Registration of processing jobs running .populate() jobs or custom function
-    process_timestamp : datetime(6)   # timestamp of the processing job
+    process_timestamp : datetime(6)   # timestamp of the processing job (UTC)
     process           : varchar(64)
     ---
     worker_name=''    : varchar(255)  # name of the worker
@@ -45,7 +46,7 @@ class WorkerLog(dj.Manual):
     _table_name = "~worker_log"
 
     @classmethod
-    def log_process_job(cls, process, worker_name="", db_prefix=[""]):
+    def log_process_job(cls, process, worker_name="", db_prefix=("",)):
         if isinstance(process, dj.user_tables.TableMeta):
             schema_name, table_name = process.full_table_name.split(".")
             schema_name = re.sub('|'.join(db_prefix), '', schema_name.strip("`"))
@@ -114,7 +115,7 @@ class ErrorLog(dj.Manual):
     process           : varchar(64)
     key_hash          : char(32)      # key hash
     ---
-    error_timestamp   : datetime(6)   # timestamp of the processing job
+    error_timestamp   : datetime(6)   # timestamp of the processing job (UTC)
     key               : varchar(2047) # structure containing the key
     error_message=""  : varchar(2047) # error message returned if failed
     error_stack=null  : mediumblob    # error stack if failed
@@ -126,7 +127,7 @@ class ErrorLog(dj.Manual):
     _table_name = "~error_log"
 
     @classmethod
-    def log_error_job(cls, error_entry, schema_name, db_prefix=[""]):
+    def log_error_job(cls, error_entry, schema_name, db_prefix=("",)):
         # if the exact same error has been logged, just update the error record
 
         table_name = error_entry['table_name']
@@ -147,6 +148,29 @@ class ErrorLog(dj.Manual):
         }
         
         if cls & {'key_hash': error_entry['key_hash']}:
+            cls.update1(entry)
+        else:
+            cls.insert1(entry)
+
+    @classmethod
+    def log_exception(cls, key, process, error):
+        error_message = "{exception}{msg}".format(
+            exception=error.__class__.__name__,
+            msg=": " + str(error) if str(error) else "",
+        )
+        entry = {
+            'process': process.__name__,
+            'key_hash': dj.hash.key_hash(key),
+            'error_timestamp': datetime.utcnow(),
+            'key': json.dumps(key, default=str),
+            'error_message': error_message,
+            'error_stack': traceback.format_exc(),
+            'host': platform.node(),
+            'user': cls.connection.get_user(),
+            'pid': os.getpid()
+        }
+
+        if cls & {'key_hash': entry['key_hash']}:
             cls.update1(entry)
         else:
             cls.insert1(entry)
