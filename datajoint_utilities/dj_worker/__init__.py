@@ -19,6 +19,7 @@ import platform
 import time
 import json
 import re
+import traceback
 from datetime import datetime
 
 import datajoint as dj
@@ -33,7 +34,7 @@ _populate_settings = {
 class WorkerLog(dj.Manual):
     definition = """
     # Registration of processing jobs running .populate() jobs or custom function
-    process_timestamp : datetime(6)   # timestamp of the processing job
+    process_timestamp : datetime(6)   # timestamp of the processing job (UTC)
     process           : varchar(64)
     ---
     worker_name=''    : varchar(255)  # name of the worker
@@ -114,7 +115,7 @@ class ErrorLog(dj.Manual):
     process           : varchar(64)
     key_hash          : char(32)      # key hash
     ---
-    error_timestamp   : datetime(6)   # timestamp of the processing job
+    error_timestamp   : datetime(6)   # timestamp of the processing job (UTC)
     key               : varchar(2047) # structure containing the key
     error_message=""  : varchar(2047) # error message returned if failed
     error_stack=null  : mediumblob    # error stack if failed
@@ -150,6 +151,30 @@ class ErrorLog(dj.Manual):
             cls.update1(entry)
         else:
             cls.insert1(entry)
+
+    @classmethod
+    def log_exception(cls, key, process, error):
+        error_message = "{exception}{msg}".format(
+            exception=error.__class__.__name__,
+            msg=": " + str(error) if str(error) else "",
+        )
+        entry = {
+            'process': process.__name__,
+            'key_hash': dj.hash.key_hash(skey),
+            'error_timestamp': datetime.utcnow(),
+            'key': json.dumps(key, default=str),
+            'error_message': error_message,
+            'error_stack': traceback.format_exc(),
+            'host': platform.node(),
+            'user': cls.connection.get_user(),
+            'pid': os.getpid()
+        }
+
+        if cls & {'key_hash': entry['key_hash']}:
+            cls.update1(entry)
+        else:
+            cls.insert1(entry)
+
     
     @classmethod
     def delete_old_logs(cls, cutoff_days=30):
