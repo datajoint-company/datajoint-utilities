@@ -46,7 +46,7 @@ class WorkerLog(dj.Manual):
     _table_name = "~worker_log"
 
     @classmethod
-    def log_process_job(cls, process, worker_name="", db_prefix=[""]):
+    def log_process_job(cls, process, worker_name="", db_prefix=("",)):
         if isinstance(process, dj.user_tables.TableMeta):
             schema_name, table_name = process.full_table_name.split(".")
             schema_name = re.sub('|'.join(db_prefix), '', schema_name.strip("`"))
@@ -127,7 +127,7 @@ class ErrorLog(dj.Manual):
     _table_name = "~error_log"
 
     @classmethod
-    def log_error_job(cls, error_entry, schema_name, db_prefix=[""]):
+    def log_error_job(cls, error_entry, schema_name, db_prefix=("",)):
         # if the exact same error has been logged, just update the error record
 
         table_name = error_entry['table_name']
@@ -160,7 +160,7 @@ class ErrorLog(dj.Manual):
         )
         entry = {
             'process': process.__name__,
-            'key_hash': dj.hash.key_hash(skey),
+            'key_hash': dj.hash.key_hash(key),
             'error_timestamp': datetime.utcnow(),
             'key': json.dumps(key, default=str),
             'error_message': error_message,
@@ -174,7 +174,6 @@ class ErrorLog(dj.Manual):
             cls.update1(entry)
         else:
             cls.insert1(entry)
-
     
     @classmethod
     def delete_old_logs(cls, cutoff_days=30):
