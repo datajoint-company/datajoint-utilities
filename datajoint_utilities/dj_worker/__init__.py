@@ -147,7 +147,7 @@ class ErrorLog(dj.Manual):
             "pid": error_entry['pid']
         }
         
-        if cls & {'key_hash': error_entry['key_hash']}:
+        if cls & {'process': entry['process'], 'key_hash': entry['key_hash']}:
             cls.update1(entry)
         else:
             cls.insert1(entry)
@@ -170,7 +170,7 @@ class ErrorLog(dj.Manual):
             'pid': os.getpid()
         }
 
-        if cls & {'key_hash': entry['key_hash']}:
+        if cls & {'process': entry['process'], 'key_hash': entry['key_hash']}:
             cls.update1(entry)
         else:
             cls.insert1(entry)
