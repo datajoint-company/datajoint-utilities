@@ -27,7 +27,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     entry_points={
-        "console_scripts": ("tmplcfg=datajoint_utilities.cmdline.templcfg:cli",),
+        "console_scripts": ("tmplcfg=datajoint_utilities.cmdline.tmplcfg:cli",),
     },
     install_requires=requirements,
 )

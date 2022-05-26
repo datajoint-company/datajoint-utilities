@@ -5,7 +5,7 @@ from pathlib import Path
 from shutil import rmtree
 
 import pytest
-from datajoint_utilities.cmdline.templcfg import run
+from datajoint_utilities.cmdline.tmplcfg import run
 
 
 @pytest.fixture
@@ -15,7 +15,7 @@ def template_config(filepath=""):
 
 @pytest.fixture
 def temp_dir():
-    tmp = Path(tempfile.gettempdir()) / "pytest_templcfg"
+    tmp = Path(tempfile.gettempdir()) / "pytest_tmplcfg"
     rmtree(tmp, ignore_errors=True)
     tmp.mkdir(0o755, True, True)
     return tmp

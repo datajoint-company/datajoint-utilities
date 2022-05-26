@@ -41,7 +41,7 @@ T_Environ = dict[str, T_NAStr]
 T_WriteMode = Literal["a", "w", "a+", "w+"]
 
 VERSION: str = "0.0.1"
-PROG: str = "templcfg"
+PROG: str = "tmplcfg"
 SECRETS: tuple[str, ...] = (
     "ALYX_PWD",
     "DJ_PASS",
