@@ -96,14 +96,14 @@ class EnvVarArgs(argparse.Action):
     ):
         if not option_string:
             return
-        keyval = values.split("=")
+        keyval = values.split("=", 1)
         key = keyval.pop(0)
         if not key:
             return
         val = keyval.pop() if keyval else ""
         kwargs = getattr(namespace, self.dest)
         kwargs = {} if kwargs is None else kwargs
-        kwargs |= {key: val or None}
+        kwargs |= {key: val}
         setattr(namespace, self.dest, kwargs)
 
 

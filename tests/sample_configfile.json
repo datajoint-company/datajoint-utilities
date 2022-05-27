@@ -4,9 +4,9 @@
     "database.host": "%DJ_HOST%",
     "database.password": "%DJ_PASS%",
     "database.port": 3306,
-    "database.prefix": "",
+    "database.prefix": "%DB_PREFIX%",
     "database.reconnect": true,
-    "database.use_tls": null,
+    "database.use_tls": %USETLS%,
     "database.user": "%DJ_USER%",
     "display.limit": 35,
     "display.show_tuple_count": true,
@@ -14,7 +14,7 @@
     "enable_python_native_blobs": true,
     "fetch_format": "array",
     "loglevel": "INFO",
-    "safemode": true,
+    "safemode": %SAFEMODE%,
     "stores": {
         "ephys": {
             "access_key": "%S3_ACCESS%",

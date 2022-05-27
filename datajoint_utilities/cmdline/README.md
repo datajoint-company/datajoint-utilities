@@ -106,13 +106,10 @@ Variables are sourced in the following order:
 
 ### Help
 
-```bash
-tmplcfg --help
 ```
-
-```
-usage: tmplcfg [-h] [-V] [-v] [--env-file PATH] [-e KEY=VAL] [-g [ENV1,ENV2 ENV3 ...]] [--write-mode STR] [--delim STR]
-               [--rdelim STR] [--chmod STR] [--allow-empty] [-t [PATH ...]] [-s PATH [PATH ...]]
+usage: tmplcfg [-h] [-V] [-v] [--env-file PATH] [-e KEY=VAL] [-g [ENV1,ENV2 ENV3 ...]]
+               [--write-mode STR] [--delim STR] [--rdelim STR] [--chmod STR] [--allow-empty]
+               [--none-val STR] [-t [PATH ...]] [-s PATH [PATH ...]]
 
 Configure and Fill File Templates
 
@@ -137,14 +134,17 @@ optional arguments:
   -e KEY=VAL, --env KEY=VAL
                         specify a single environment variable to use (default: None)
   -g [ENV1,ENV2 ENV3 ...], --env-os [ENV1,ENV2 ENV3 ...]
-                        a comma-separated or space separated list of global environment variables to try and retrieve from
-                        `os.environ` (default: None)
+                        a comma-separated or space separated list of global environment
+                        variables to try and retrieve from `os.environ` (default: None)
   --write-mode STR      file open mode for the written target file (default: w)
   --delim STR           replacement character delimiter (default: %)
-  --rdelim STR          closing/right replacement character delimiter, uses left if missing (default: None)
+  --rdelim STR          closing/right replacement character delimiter, uses left if missing
+                        (default: None)
   --chmod STR           file permissions code (default: None)
-  --allow-empty         allow empty variables to be stored in the pool of variables and set empty values when writing to
-                        target files (default: False)
+  --allow-empty         allow empty variables to be stored in the pool of variables and set
+                        empty values when writing to target files (default: False)
+  --none-val STR        The value to use if the replacement is 'None' in python. Defaults to an
+                        empty string (default: )
 
 file path arguments:
   All file paths must be an absolute path and not a file name.
@@ -152,7 +152,8 @@ file path arguments:
   -t [PATH ...], --targets [PATH ...]
                         specify a target file to write to (default: None)
   -s PATH [PATH ...], --sources PATH [PATH ...]
-                        specify source/template files to be configured (Required) (default: None)
+                        specify source/template files to be configured (Required) (default:
+                        None)
 ```
 
 Notes:

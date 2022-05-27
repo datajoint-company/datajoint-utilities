@@ -12,7 +12,7 @@ A general purpose repository containing all generic tools/utilities surrounding 
 # Installation
 
 ```
-pip install git+https://github.com/vathes/datajoint-utilities.git
+pip install git+https://github.com/datajoint-company/datajoint-utilities.git
 ```
 
 # Level of support
