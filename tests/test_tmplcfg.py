@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import textwrap
 from pathlib import Path
@@ -29,6 +30,10 @@ def dot_env_file(temp_dir):
         DJ_HOST=datajoint-rds.blah.blah.blah.com
         DJ_USER=admin
         DJ_PASS=shhhhh
+        # comment
+        EMPTY_VAR=
+        NONE_VAR
+        S3_SECRET=overriden
         """
     )
 
@@ -48,28 +53,47 @@ def template_content(template_config):
 
 
 def test_configure_run(template_config, temp_dir, dot_env_file, template_content):
+    os.environ["GLOBAL_VAR"] = ""
     cli_args = [
         "-vv",
         f"--env-file={dot_env_file}",
-        "--env=",
-        "--env=VAR0",
-        "--env-os=PYTHONPATH, VAR1 VAR2",
+        "--env-os=USETLS, VAR0 VAR1, GLOBAL_VAR",
         "-g",
-        "VAR3",
+        "VAR2",
         "--env-os=",
+        "-e",
+        "VAR3=~[a-ZA-Z]!@#$%^&*(-_=+)",
+        "--env=",
+        "--env=VAR4",
+        "--env=DB_PREFIX=",
+        "--env=SAFEMODE=false",
         "-e",
         "S3_SECRET=supersecretkey",
         "--env=S3_ACCESS=mysecrets",
-        "--env=SOME_SETTING=true",
         "--write-mode=w",
+        "--none-val=null",
         "--chmod=660",
+        "--allow-empty",
         f"--sources={template_config}",
         "-t",
         f"{temp_dir}",
     ]
+
     configure = run(*cli_args)
+
+    assert configure.environment["VAR0"] is None
+    assert configure.environment["VAR3"] == "~[a-ZA-Z]!@#$%^&*(-_=+)"
+    assert configure.environment["VAR4"] == ""
+    assert configure.environment["GLOBAL_VAR"] == ""
+    assert configure.environment["DB_PREFIX"] == ""
+    assert configure.environment["EMPTY_VAR"] == ""
+    assert configure.environment["NONE_VAR"] is None
+
     with open(temp_dir / "configfile.json") as fc:
         configured = json.load(fc)
+    assert configured["database.prefix"] == ""
+    assert configured["database.use_tls"] is None
+    assert configured["safemode"] is False
     assert configured["database.host"] == "datajoint-rds.blah.blah.blah.com"
     assert configured["stores"]["ephys"]["access_key"] == "mysecrets"
     assert configured["stores"]["ephys"]["secret_key"] == "supersecretkey"

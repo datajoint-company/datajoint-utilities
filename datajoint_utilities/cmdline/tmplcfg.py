@@ -122,10 +122,19 @@ class ParseCLIArgs(cmd.ArgparseBase):
         )
         self.parser.add_argument(
             "--allow-empty",
+            action="store_true",
             dest="allow_empty",
             help="allow empty variables to be stored in the pool of variables "
             "and set empty values when writing to target files",
-            action="store_true",
+        )
+        self.parser.add_argument(
+            "--none-val",
+            default="",
+            dest="none_str",
+            help="The value to use if the replacement is 'None' in python. "
+            "Defaults to an empty string",
+            metavar="STR",
+            type=str,
         )
         files_group = self.parser.add_argument_group(
             "file path arguments",
@@ -190,6 +199,21 @@ def verbosity_logger(loglevel: int, base_level: str = "WARNING") -> logging.Logg
     log.info(f"logging set to level: '{logging.getLevelName(loglevel)}'")
 
     return log
+
+
+def _secret_key() -> str:
+    """Create a Django secret key. Requires `django` module.
+
+    Returns:
+        _type_: Random string
+    """
+    try:
+        from django.utils.crypto import get_random_string
+    except ImportError as err:
+        log.error(f"django not installed:\n{err}")
+        return None
+    chars = "abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*(-_=+)"
+    return get_random_string(50, chars)
 
 
 def mask_secret(
@@ -518,7 +542,7 @@ class EnvironVars:
         return missing
 
     def _load_environ_vars(self, *args, allow_empty: bool = True):
-        environ_vars = {arg: os.getenv(arg) or None for arg in args}
+        environ_vars = {arg: os.getenv(arg) for arg in args}
         if not allow_empty:
             environ_vars = dict_clean(environ_vars)
         self.environ_vars |= environ_vars
@@ -575,6 +599,7 @@ class Configure(EnvironVars):
             kwargs.get("kw_env"),
             kwargs.get("allow_empty", False),
         )
+        self.none_str: str = kwargs.get("none_str", "")
         self.write_mode: T_WriteMode = kwargs.get("write_mode", "w")
         self._get_chmod(kwargs.get("chmod"))
 
@@ -604,7 +629,7 @@ class Configure(EnvironVars):
             content: str = _read_file_content(source_file)
             for key, value in self.replacements.items():
                 if key in content:
-                    replacement = value or ""
+                    replacement = value if value is not None else self.none_str
                     log.debug(
                         f"replacing all occurrences of '{key}' w/ "
                         f"'{mask_secret(key, replacement, secrets=self._secrets)}'"
