@@ -12,15 +12,6 @@ Example:
         %(prog)s --env-file=.env -e X=1 my/template/file.txt
         %(prog)s -vv --env-file=../.env -e VAR1=VAL --env=VAR2=VAL \\
             --write-mode=a --chmod=660 -t settings.py -s settings_template.py
-
-Notes:
-    - Python>=3.9 required
-    - Joseph Burling <joseph@datajoint.com>
-
-TODO:
-    - custom secrets variables
-    - import a custom defaults dictionary passed to EnvironVars
-    - custom regex to `strip_source_name`
 """
 
 
