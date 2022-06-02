@@ -40,7 +40,7 @@ dj_slack_notifier = SlackWebhookNotifier(webhook_url=os.getenv('DJ_SLACK_WEBHOOK
 project_slack_notifier = SlackWebhookNotifier(webhook_url=os.getenv('PROJECT_SLACK_WEBHOOK_URL'))
 
 # create two log handlers
-quite_handler = PopulateHandler(notifiers=[email_notifier],
+quiet_handler = PopulateHandler(notifiers=[email_notifier],
                                 full_table_names=[ephys.EphysRecording.full_table_name,
                                                   ephys.CuratedClustering.full_table_name],
                                 on_start=False, on_success=True, on_error=True)
@@ -55,7 +55,7 @@ verbose_handler = PopulateHandler(notifiers=[dj_slack_notifier, project_slack_no
 # add the customer handlers into datajoint's autopopulate logger
 logger = dj.autopopulate.logger
 
-logger.addHandler(quite_handler)
+logger.addHandler(quiet_handler)
 logger.addHandler(verbose_handler)
 
 ```
