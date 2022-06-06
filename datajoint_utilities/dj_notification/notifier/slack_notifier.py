@@ -8,4 +8,4 @@ class SlackWebhookNotifier(Notifier):
         self.webhook = WebhookClient(webhook_url)
 
     def notify(self, title, message):
-        self.webhook.send(text=f'# {title}\n{message}')
+        self.webhook.send(text=f'#{title}\n```{message}```')

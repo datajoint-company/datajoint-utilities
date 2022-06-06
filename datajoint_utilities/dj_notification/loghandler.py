@@ -31,11 +31,11 @@ class PopulateHandler(StreamHandler):
         self._status_to_notify = {'start': on_start, 'success': on_success, 'error': on_error}
 
     def emit(self, record):
-        if not any(p in record for p in self._patterns):
-            return
-
         msg = self.format(record)
-        match = re.search(r'(Start|Success|Error) .* populating TABLE (.*) - KEY', msg)
+        if not any(p in msg for p in self._patterns):
+            return
+        print(msg)
+        match = re.search(r'(Start|Success|Error).*populating TABLE: (.*) - KEY.*', msg)
         status, full_table_name = match.groups()
 
         if (not self._status_to_notify[status.lower()]
