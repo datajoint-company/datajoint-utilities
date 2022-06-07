@@ -27,7 +27,9 @@ def drop_schemas(prefix=None, dry_run=True, force_drop=False):
         try:
             prefix = dj.config["custom"]["database.prefix"]
         except KeyError:
-            raise NameError("Please specify a prefix with function or in dj.config")
+            raise NameError("No prefix found in dj.config[\"custom\"]"
+                           + "[\"database.prefix\"]\n"
+                           + "Please add a prefix with drop_schemas(prefix=<prefix>)")
 
     schemas_with_prefix = list_schemas_prefix(prefix)
 
