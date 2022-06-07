@@ -38,10 +38,11 @@ def drop_schemas(prefix=None, dry_run=True, force_drop=False):
 
     else:
         while schemas_with_prefix:
-            for i in schemas_with_prefix:
+            for schema_name in schemas_with_prefix:
                 try:
-                    dj.schema(i).drop(force=force_drop)
-                    schemas_with_prefix.remove(i)
-                    print(i)
+                    dj.schema(schema_name).drop(force=force_drop)
                 except OperationalError:
                     pass
+                else:
+                    schemas_with_prefix.remove(schema_name)
+                    print(schema_name)
