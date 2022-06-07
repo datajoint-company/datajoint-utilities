@@ -2,7 +2,7 @@ import datajoint as dj
 from pymysql import  OperationalError
 
 """
-Misc helper functions to support dev. Chris Brozdowski <CBroz@datajoint.com>
+Dev helper functions. Chris Brozdowski <CBroz@datajoint.com>
 - list_schemas_prefix: returns a list of schemas with a specific prefix
 - drop_schemas: Cycles through schemas on a given prefix until all are dropped
 """
@@ -13,13 +13,15 @@ def list_schemas_prefix(prefix):
     return [s for s in dj.list_schemas() if s.startswith(prefix)]
 
 
-def drop_schemas(prefix=None, dry_run=True):
+def drop_schemas(prefix=None, dry_run=True, force_drop=False):
     """
-    Cycles through schemas with specific prefix. If not dry_run, drops the schemas from the database.
-    Useful for dev, to save time figuring out the correct order in which to drop schemas
+    Cycles through schemas with specific prefix. If not dry_run, drops the schemas 
+    from the database. Saves time figuring out the correct order for dropping schemas.
 
     :param prefix: Optional. If not specified, uses dj.config prefix
-    :param dry_run: Optional. If True, returns list would attempt to drop
+    :param dry_run: Optional, default True. If True, returns list would attempt to drop
+    :param force_drop: Optional, default False. Passed to `schema.drop()`. 
+                       If True, skips the standard confirmation prompt.
     """
     if not prefix:
         try:
@@ -36,7 +38,7 @@ def drop_schemas(prefix=None, dry_run=True):
         while schemas_with_prefix:
             for i in schemas_with_prefix:
                 try:
-                    dj.schema(i).drop()
+                    dj.schema(i).drop(force=force_drop)
                     schemas_with_prefix.remove(i)
                     print(i)
                 except OperationalError:
