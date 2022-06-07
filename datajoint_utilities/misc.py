@@ -4,7 +4,7 @@ from pymysql import  OperationalError
 """
 Misc helper functions to support dev. Chris Brozdowski <CBroz@datajoint.com>
 - list_schemas_prefix: returns a list of schemas with a specific prefix
-- clear_schemas: Cycles through schemas on a given prefix until all are dropped
+- drop_schemas: Cycles through schemas on a given prefix until all are dropped
 """
 
 
@@ -13,9 +13,9 @@ def list_schemas_prefix(prefix):
     return [s for s in dj.list_schemas() if s.startswith(prefix)]
 
 
-def clear_schemas(prefix=None, dry_run=True):
+def drop_schemas(prefix=None, dry_run=True):
     """
-    Cycles through schemas with specific prefix. If not dry_run, tries to drop.
+    Cycles through schemas with specific prefix. If not dry_run, drops the schemas from the database.
     Useful for dev, to save time figuring out the correct order in which to drop schemas
 
     :param prefix: Optional. If not specified, uses dj.config prefix
@@ -36,7 +36,7 @@ def clear_schemas(prefix=None, dry_run=True):
         while schemas_with_prefix:
             for i in schemas_with_prefix:
                 try:
-                    dj.schema(i).drop(force=True)
+                    dj.schema(i).drop()
                     schemas_with_prefix.remove(i)
                     print(i)
                 except OperationalError:
