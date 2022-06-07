@@ -13,7 +13,7 @@ def list_schemas_prefix(prefix):
     return [s for s in dj.list_schemas() if s.startswith(prefix)]
 
 
-def drop_schemas(prefix=None, dry_run=True, force_drop=False):
+def drop_schemas(prefix=None, dry_run=True, force_drop=False, max_attempts=10):
     """
     Cycles through schemas with specific prefix. If not dry_run, drops the schemas 
     from the database. Saves time figuring out the correct order for dropping schemas.
@@ -22,6 +22,7 @@ def drop_schemas(prefix=None, dry_run=True, force_drop=False):
     :param dry_run: Optional, default True. If True, returns list would attempt to drop
     :param force_drop: Optional, default False. Passed to `schema.drop()`. 
                        If True, skips the standard confirmation prompt.
+    :param max_attempts: Optional, default 10. Max attempts to drop relevant schemas
     """
     if not prefix:
         try:
@@ -37,7 +38,7 @@ def drop_schemas(prefix=None, dry_run=True, force_drop=False):
         print("\n".join(schemas_with_prefix))
 
     else:
-        while schemas_with_prefix:
+        while schemas_with_prefix and max_attempts > 0:
             for schema_name in schemas_with_prefix:
                 try:
                     dj.schema(schema_name).drop(force=force_drop)
@@ -46,3 +47,4 @@ def drop_schemas(prefix=None, dry_run=True, force_drop=False):
                 else:
                     schemas_with_prefix.remove(schema_name)
                     print(schema_name)
+            max_attempts -= 1
