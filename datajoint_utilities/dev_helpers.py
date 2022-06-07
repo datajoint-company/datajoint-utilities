@@ -44,13 +44,13 @@ def drop_schemas(prefix=None, dry_run=True, force_drop=False):
             for schema_name in schemas_with_prefix:
                 try:
                     dj.schema(schema_name).drop(force=force_drop)
-                except OperationalError:
-                    pass
+                except OperationalError as e:
+                    recent_err = e
                 else:
                     schemas_with_prefix.remove(schema_name)
                     print(schema_name)
-            assert n_schemas_initial != len(
-                schemas_with_prefix
-            ), f"Could not drop any of the following schemas:\n" + "\n".join(
-                schemas_with_prefix
+            assert n_schemas_initial != len(schemas_with_prefix), (
+                f"Could not drop any of the following schemas:\n"
+                + "\n".join(schemas_with_prefix)
+                + f"Most recent error:\n{recent_err}"
             )
