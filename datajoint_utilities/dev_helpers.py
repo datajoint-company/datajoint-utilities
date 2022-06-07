@@ -50,7 +50,7 @@ def drop_schemas(prefix=None, dry_run=True, force_drop=False):
                     schemas_with_prefix.remove(schema_name)
                     print(schema_name)
             assert n_schemas_initial != len(schemas_with_prefix), (
-                f"Could not drop any of the following schemas:\n"
-                + "\n".join(schemas_with_prefix)
-                + f"Most recent error:\n{recent_err}"
+                f"Could not drop any of the following schemas:\n\t"
+                + "\n\t".join(schemas_with_prefix)
+                + f"\nMost recent error:\n\t{recent_err}"
             )
