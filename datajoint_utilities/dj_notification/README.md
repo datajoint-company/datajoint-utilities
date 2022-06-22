@@ -54,6 +54,10 @@ verbose_handler = PopulateHandler(notifiers=[dj_slack_notifier, project_slack_no
 
 # add the customer handlers into datajoint's autopopulate logger
 logger = dj.autopopulate.logger
+logger.setLevel('DEBUG')
+
+quiet_handler.setLevel('DEBUG')
+verbose_handler.setLevel('DEBUG')
 
 logger.addHandler(quiet_handler)
 logger.addHandler(verbose_handler)
