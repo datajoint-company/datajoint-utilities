@@ -8,9 +8,9 @@ class PopulateHandler(StreamHandler):
     Custom Log Handler to parse and handle DataJoint logs related to populating tables.
     """
 
-    _patterns = ('Start populating TABLE',
-                 'Successful in populating TABLE',
-                 'Error in populating TABLE')
+    _patterns = ('Making',
+                 'Error making',
+                 'Success making')
 
     def __init__(self, notifiers, full_table_names,
                  on_start=True,
@@ -35,8 +35,12 @@ class PopulateHandler(StreamHandler):
         if not any(p in msg for p in self._patterns):
             return
         print(msg)
-        match = re.search(r'(Start|Success|Error).*populating TABLE: (.*) - KEY.*', msg)
-        status, full_table_name = match.groups()
+        match = re.search(r'(Making|Success making|Error making) .* -> (\S+)( - .*)?', msg)
+        status, full_table_name, _ = match.groups()
+
+        status = {'Making': 'start',
+                  'Success making': 'success',
+                  'Error making': 'error'}[status]
 
         if (not self._status_to_notify[status.lower()]
                 or full_table_name not in self.full_table_names):
