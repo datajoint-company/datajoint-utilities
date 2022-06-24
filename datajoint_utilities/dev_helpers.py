@@ -13,7 +13,7 @@ def list_schemas_prefix(prefix):
     return [s for s in dj.list_schemas() if s.startswith(prefix)]
 
 
-def drop_schemas(prefix=None, dry_run=True, force_drop=False):
+def drop_schemas(prefix, dry_run=True, force_drop=False):
     """
     Cycles through schemas with specific prefix. If not dry_run, drops the schemas
     from the database. Saves time figuring out the correct order for dropping schemas.
