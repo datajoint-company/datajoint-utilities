@@ -10,6 +10,7 @@ class MailgunEmailNotifier(Notifier):
         self.request_url = f'https://api.mailgun.net/v3/{mailgun_domain_name}/messages'
         self.body = {
             "from": f"{sender_name} <{sender_email}>",
+            "to": sender_email,
             "bcc": receiver_emails
         }
 
