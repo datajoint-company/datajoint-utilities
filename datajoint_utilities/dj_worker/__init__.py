@@ -20,9 +20,11 @@ import time
 import json
 import re
 import traceback
+import pymysql
 from datetime import datetime
 
 import datajoint as dj
+import pymysql
 
 _populate_settings = {
     "display_progress": True,
@@ -106,7 +108,10 @@ class WorkerLog(dj.Manual):
         )
         if old_jobs:
             with dj.config(safemode=False):
-                (cls & old_jobs).delete_quick()
+                try:
+                    (cls & old_jobs).delete_quick()
+                except pymysql.err.OperationalError:
+                    pass
 
 
 class ErrorLog(dj.Manual):
@@ -185,7 +190,10 @@ class ErrorLog(dj.Manual):
         )
         if old_jobs:
             with dj.config(safemode=False):
-                (cls & old_jobs).delete_quick()
+                try:
+                    (cls & old_jobs).delete_quick()
+                except pymysql.err.OperationalError:
+                    pass
 
 
 class DataJointWorker:
