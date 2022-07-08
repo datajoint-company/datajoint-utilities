@@ -1,2 +1,2 @@
 pkg_name = 'dj_search'
-__version__ = '0.0.2'
+__version__ = '0.0.3'
