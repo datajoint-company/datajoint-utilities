@@ -19,7 +19,7 @@ def drop_schemas(prefix, dry_run=True, force_drop=False):
     from the database. Saves time figuring out the correct order for dropping schemas.
 
     :param prefix: Optional. If not specified, uses dj.config prefix
-    :param dry_run: Optional, default True. If True, returns list would attempt to drop
+    :param dry_run: Optional, default True. If True, returns list of schemas with prefix.
     :param force_drop: Optional, default False. Passed to `schema.drop()`.
                        If True, skips the standard confirmation prompt.
     """
