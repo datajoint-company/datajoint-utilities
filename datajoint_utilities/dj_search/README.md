@@ -11,7 +11,7 @@ from datajoint_utilities.dj_search import list_schemas_prefix, drop_schemas, lis
 # list schemas with a given prefix
 list_schemas_prefix('dbprefix1')
 
-# list schemas in an order that they could be dropped, to avoid foreign key contraints
+# list schemas in an order that they could be dropped, to avoid foreign key constraints
 list_drop_order('dbprefix1')
 
 # drop schemas with a given prefix. Dry run ordered listing is slow.
