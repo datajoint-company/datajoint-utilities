@@ -5,7 +5,8 @@ from pymysql import OperationalError
 Development helper functions. Chris Brozdowski <CBroz@datajoint.com>
 - list_schemas_prefix: returns a list of schemas with a specific prefix
 - drop_schemas: Cycles through schemas on a given prefix until all are dropped
-- list_drop_order: Cycles though schemas with a given pre
+- list_drop_order: Cycles though schemas with a given prefix. List schemas in an order 
+                   that they could be dropped, to avoid foreign key constraints
 """
 
 
