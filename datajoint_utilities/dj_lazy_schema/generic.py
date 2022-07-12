@@ -24,10 +24,9 @@ from typing import (
 from uuid import UUID
 
 import datajoint as dj
+import datajoint_utilities.dj_lazy_schema.typing as djt
 from datajoint.errors import MissingTableError, QueryError
 from typing_extensions import Unpack
-
-import dj_lazy_schema.typing as djt
 
 
 # frame stack functions ----------------------------------------------------------------
@@ -589,8 +588,8 @@ def insert_row(
     attrs: djt.AnyMap,
     **insert_opts: Unpack[djt.InsertOpts],
 ) -> djt.T_UserTable:
-    cls().insert1(attrs, **insert_opts)
-    pks: list[str] = cls.primary_key
+    cls().insert1(attrs, **insert_opts)  # type: ignore
+    pks: list[str] = cast(list[str], cls.primary_key)
     key = subset(attrs, *pks)
     restriction: djt.T_UserTable = cls & key
     if not restriction:
