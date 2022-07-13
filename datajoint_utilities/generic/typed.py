@@ -1,3 +1,5 @@
+import datajoint_utilities.typing as djt  # isort: skip
+
 import datetime as dt
 import hashlib
 import inspect
@@ -24,7 +26,6 @@ from typing import (
 from uuid import UUID
 
 import datajoint as dj
-import datajoint_utilities.dj_lazy_schema.typing as djt
 from datajoint.errors import MissingTableError, QueryError
 from typing_extensions import Unpack
 
@@ -77,14 +78,22 @@ def get_module_objects(
 
 
 def module_name_from_frame(source: djt.FrameStack) -> str:
-    module = inspect.getmodule(calling_frame(source))
-    return str(getattr(module.__spec__, "name", "")) if module else ""
+    frame = calling_frame(source)
+    module = inspect.getmodule(frame)
+    if module is None:
+        return ""
+    module_name = getattr(module.__spec__, "name", "")
+    if not module_name and module.__name__ == "__main__":
+        module_name = Path(module.__file__).stem if module.__file__ else ""
+    return module_name
 
 
 def pkg_name_from_frame(source: djt.FrameStack, fallback: str = "") -> str:
-    pkg_parts = module_name_from_frame(source).split(".", maxsplit=1)[0]
+    module_root = module_name_from_frame(source).split(".", maxsplit=1)[0]
     return (
-        pkg_parts if pkg_parts and pkg_parts in packages_distributions() else fallback
+        module_root
+        if module_root and module_root in packages_distributions()
+        else fallback
     )
 
 
@@ -234,6 +243,12 @@ def utc_timestamp(
 
 
 # misc functions -----------------------------------------------------------------------
+def is_empty_string(string: object, none_as_empty: bool = True) -> bool:
+    if string is None:
+        return none_as_empty
+    return isinstance(string, str) and string == ""
+
+
 def arr_bool(obj: object) -> bool:
     return obj.size != 0 if djt.is_ndarray(obj) else bool(obj)
 
@@ -531,7 +546,7 @@ def get_prefix(fallback: str = "unknown_database", *, sep: str = "_") -> str:
     return f"{entry}{sep}" if entry else ""
 
 
-def append_to_prefix(name: str) -> str:
+def append_to_prefix(name: str, **kwargs: str) -> str:
     """Append a module name to the configured database prefix.
 
     Args:
@@ -548,7 +563,7 @@ def append_to_prefix(name: str) -> str:
     """
     if not name:
         raise ValueError("string to append cannot be empty.")
-    return get_prefix() + name
+    return get_prefix(**kwargs) + name
 
 
 def set_missing_configs(

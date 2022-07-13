@@ -1,4 +1,7 @@
-"""Type aliases and other typing information used across modules."""
+from datajoint_utilities.generic.pkgutil import detect_min_python_version
+
+detect_min_python_version(3, 10)
+
 import datetime
 import inspect
 import types
