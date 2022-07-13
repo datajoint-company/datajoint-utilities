@@ -1,3 +1,4 @@
 datajoint>=0.13.5
 termcolor
 slack-sdk
+python-dotenv
