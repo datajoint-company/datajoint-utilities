@@ -154,22 +154,16 @@ def as_path_parts(file_or_parts: djt.StrPath) -> djt.StrTuple:
 
 
 def as_path_parts(file_or_parts: djt.StrPathParts) -> djt.StrTuple:
-    """no extension at end
+    """Like `Path().parts` but with no extension at end.
 
     Args:
-        file_or_parts (djt.StrPathParts): _description_
+        file_or_parts (djt.StrPathParts): A sequence of path parts or a path string to get parts from.
 
     Raises:
-        TypeError: _description_
+        TypeError: Incorrect type of argument.
 
     Returns:
-        djt.StrTuple: _description_
-
-    Examples:
-        Examples should be written in doctest format and should illustrate how to use
-        the function.
-
-            my_function(x="value")
+        djt.StrTuple: A sequence of path parts.
     """
     if file_or_parts is None:
         return djt.StrTuple()
@@ -552,6 +546,7 @@ def append_to_prefix(name: str, **kwargs: str) -> str:
 
     Args:
         name (str): Name of module to append to database prefix.
+        kwargs (str): Keyword arguments passed to `get_prefix`.
 
     Returns:
         string: Extended database prefix.
@@ -586,7 +581,6 @@ def set_missing_configs(
         file (Path | str | None): Path to initialize a datajoint `JSON` config
             file before setting the rest of the arguments.
     """
-
     if file:
         dj.config.load(file)
 
@@ -615,13 +609,14 @@ def insert_row(
 
 def dj_table_info(table: djt.UserTable, name_prefix: str = "") -> str:
     db_name: str = table.database  # type: ignore
-    if table.database is None or table.heading is None:
+    cls_name: str = table.__name__ or ""  # type: ignore
+    if table.database is None or table.heading is None or not cls_name:
         raise dj.errors.DataJointError(
-            f"Class {table.__name__} is not properly declared "
+            f"Class {cls_name} is not properly declared "
             "(schema decorator not applied?)"
         )
     db_table_name: str = table.table_name  # type: ignore
-    table_name = f"{name_prefix}.{table.__name__}" if name_prefix else table.__name__
+    table_name = f"{name_prefix}.{cls_name}" if name_prefix else cls_name
     table_comment: str = (
         table.heading.table_status["comment"] if table.heading.table_status else ""
     )
