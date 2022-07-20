@@ -1,11 +1,11 @@
 import datajoint as dj
-from pymysql import OperationalError
+from pymysql import IntegrityError, OperationalError
 
 """
 Development helper functions. Chris Brozdowski <CBroz@datajoint.com>
 - list_schemas_prefix: returns a list of schemas with a specific prefix
 - drop_schemas: Cycles through schemas on a given prefix until all are dropped
-- list_drop_order: Cycles though schemas with a given prefix. List schemas in an order 
+- list_drop_order: Cycles though schemas with a given prefix. List schemas in an order
                    that they could be dropped, to avoid foreign key constraints
 """
 
@@ -79,7 +79,7 @@ def drop_schemas(prefix, dry_run=True, ordered=False, force_drop=False):
             for schema_name in schemas_with_prefix:
                 try:
                     dj.schema(schema_name).drop(force=force_drop)
-                except OperationalError as e:
+                except (OperationalError, IntegrityError) as e:
                     recent_err = e
                 else:
                     schemas_with_prefix.remove(schema_name)
