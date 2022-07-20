@@ -2,6 +2,7 @@ import datajoint_utilities.typing as djt  # isort: skip
 
 import datetime as dt
 import hashlib
+import importlib
 import inspect
 import itertools
 import json
@@ -610,3 +611,47 @@ def insert_row(
     if not restriction:
         raise QueryError(f"Insertion returned empty table given key:\n{key}")
     return restriction
+
+
+def dj_table_info(table: djt.UserTable, name_prefix: str = "") -> str:
+    db_name: str = table.database  # type: ignore
+    if table.database is None or table.heading is None:
+        raise dj.errors.DataJointError(
+            f"Class {table.__name__} is not properly declared "
+            "(schema decorator not applied?)"
+        )
+    db_table_name: str = table.table_name  # type: ignore
+    table_name = f"{name_prefix}.{table.__name__}" if name_prefix else table.__name__
+    table_comment: str = (
+        table.heading.table_status["comment"] if table.heading.table_status else ""
+    )
+    table_attrs = str(table.heading).splitlines()
+    if table_attrs[0].startswith("#"):
+        table_attrs = table_attrs[1:]
+    table_attrs = "\n".join(table_attrs)
+    nl = "\n\n"
+    return (
+        f"{nl}## {table_name}{nl}"
+        f"_{table_comment}_{nl}"
+        f"**Attributes**{nl}```\n{table_attrs}\n```{nl}"
+        f"**Database**{nl}**_`{db_name}`_**{nl}"
+        f"**Table**{nl}**_`{db_table_name}`_**{nl}"
+    )
+
+
+def markdown_dj_tables(schema: str | djt.ModuleType):
+    if isinstance(schema, str):
+        schema = importlib.import_module(schema)
+    table_info = ["# DataJoint Tables\n\n"]
+    for table in [
+        getattr(schema, name) for name, _ in inspect.getmembers(schema, djt.is_djtable)
+    ]:
+        table_info.append(dj_table_info(table))
+        table_info.extend(
+            dj_table_info(part_table, table.__name__)
+            for part_table in [
+                getattr(table, name)
+                for name, _ in inspect.getmembers(table, djt.is_parttable)
+            ]
+        )
+    return "\n\n".join(table_info)

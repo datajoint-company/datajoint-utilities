@@ -120,6 +120,7 @@ class SupportsBool(Protocol):
 T_Table = TypeVar("T_Table", bound=dj.expression.QueryExpression)
 T_UserTable = TypeVar("T_UserTable", bound=dj.user_tables.UserTable)
 BaseTable: TypeAlias = dj.expression.QueryExpression
+UserTable: TypeAlias = dj.user_tables.UserTable
 AnyTable: TypeAlias = (
     dj.expression.QueryExpression
     | dj.table.Table
