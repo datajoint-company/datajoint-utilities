@@ -21,6 +21,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/datajoint-company/datajoint-utilities",
     packages=setuptools.find_packages(exclude=["test*", "docs"]),
+    package_data={"datajoint_utilities": ["py.typed"]},
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
@@ -30,4 +31,5 @@ setuptools.setup(
         "console_scripts": ("tmplcfg=datajoint_utilities.cmdline.tmplcfg:cli",),
     },
     install_requires=requirements,
+    zip_safe=False,
 )
