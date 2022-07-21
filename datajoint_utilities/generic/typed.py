@@ -16,8 +16,8 @@ from pathlib import Path
 from uuid import UUID
 
 import datajoint as dj
+import typing_extensions as typx
 from datajoint.errors import MissingTableError, QueryError
-from typing_extensions import Unpack
 
 
 # frame stack functions ----------------------------------------------------------------
@@ -228,17 +228,11 @@ def utc_timestamp(
 def is_empty_string(string: object, none_as_empty: bool = True) -> bool:
     if string is None:
         return none_as_empty
-    return isinstance(string, str) and not string 
+    return isinstance(string, str) and not string
 
 
 def arr_bool(obj: object) -> bool:
     return obj.size != 0 if djt.is_ndarray(obj) else bool(obj)
-
-
-def _in_switch(
-    x: typ.Container[object], y: typ.Container[object], is_in: bool = True
-) -> bool:
-    return x in y == is_in
 
 
 def _extract(
@@ -247,26 +241,15 @@ def _extract(
     *,
     prefix: str = "",
     suffix: str = "",
-    keep: bool = True,
 ) -> djt.DictObj:
-    return {
-        f"{prefix}{key}{suffix}": dict_[key]
-        for key in keys
-        if _in_switch(key, dict_, keep)
-    }
-
-
-class _ExtractOptions(typ.TypedDict, total=False):
-    prefix: str
-    suffix: str
-    keep: bool
+    return {f"{prefix}{key}{suffix}": dict_[key] for key in keys if key in dict_}
 
 
 @typ.overload
 def subset(
     dict_or_seq_of: typ.Sequence[djt.AnyMap],
     *dict_keys: str,
-    **options: Unpack[_ExtractOptions],
+    **options: str,
 ) -> list[djt.DictObj]:
     ...
 
@@ -275,7 +258,7 @@ def subset(
 def subset(
     dict_or_seq_of: djt.AnyMap,
     *dict_keys: str,
-    **options: Unpack[_ExtractOptions],
+    **options: str,
 ) -> djt.DictObj:
     ...
 
@@ -283,7 +266,7 @@ def subset(
 def subset(
     dict_or_seq_of: djt.AnyMapMapSeq,
     *dict_keys: str,
-    **options: Unpack[_ExtractOptions],
+    **options: str,
 ) -> list[djt.DictObj] | djt.DictObj:
     if isinstance(dict_or_seq_of, typ.Sequence):
         return [_extract(map_, dict_keys, **options) for map_ in dict_or_seq_of]
@@ -354,9 +337,7 @@ class KWA:
     ) -> tuple[djt.DictObj, djt.DictObj]:
         keys = KWA._keys_iterable(keys_from)
         extracted_kwargs = subset(kwargs, *keys)
-        other_kwargs = {
-            k: v for k, v in kwargs.items() if k not in extracted_kwargs
-        }
+        other_kwargs = {k: v for k, v in kwargs.items() if k not in extracted_kwargs}
         return extracted_kwargs, other_kwargs
 
     @classmethod
@@ -585,7 +566,7 @@ def set_missing_configs(
 def insert_row(
     cls: type[djt.T_UserTable],
     attrs: djt.AnyMap,
-    **insert_opts: Unpack[djt.InsertOpts],
+    **insert_opts: typx.Unpack[djt.InsertOpts],
 ) -> djt.T_UserTable:
     cls().insert1(attrs, **insert_opts)  # type: ignore
     pks: list[str] = typ.cast(list[str], cls.primary_key)
