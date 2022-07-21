@@ -1,11 +1,11 @@
 import datajoint as dj
-from pymysql import OperationalError
+from pymysql import IntegrityError, OperationalError
 
 """
-Development helper functions. Chris Brozdowski <CBroz@datajoint.com>
+Development helper functions.
 - list_schemas_prefix: returns a list of schemas with a specific prefix
 - drop_schemas: Cycles through schemas on a given prefix until all are dropped
-- list_drop_order: Cycles though schemas with a given prefix. List schemas in an order 
+- list_drop_order: Cycles though schemas with a given prefix. List schemas in an order
                    that they could be dropped, to avoid foreign key constraints
 """
 
@@ -17,7 +17,6 @@ def list_schemas_prefix(prefix):
 
 def list_drop_order(prefix):
     """Returns schema order from bottom-up"""
-    # TODO: better integrate with DJSearch init that calls all contents at once
     schema_list = list_schemas_prefix(prefix=prefix)
     # schemas as dictionary of empty lists
     depends_on = {s: [] for s in schema_list}
@@ -32,11 +31,11 @@ def list_drop_order(prefix):
             # add schema to the list of schema dependents
             depends_on[upstream] = [*depends_on[upstream], schema]
     drop_list = []  # ordered list to drop
-    while len(depends_on):
+    while depends_on:
         drop_list += [k for k, v in depends_on.items() if not v]  # empty is dropable
         depends_on = {k: v for k, v in depends_on.items() if v}  # remove from dict
-        remaining = depends_on.keys()  # can't change dict in loop
-        for schema in remaining:  # remove dropable from other values
+        for schema in depends_on:
+            # Filter out items already in drop list
             depends_on[schema] = [s for s in depends_on[schema] if s not in drop_list]
 
     return drop_list
@@ -75,12 +74,13 @@ def drop_schemas(prefix, dry_run=True, ordered=False, force_drop=False):
 
     elif not dry_run:
         while schemas_with_prefix:
+            recent_errs = []
             n_schemas_initial = len(schemas_with_prefix)
             for schema_name in schemas_with_prefix:
                 try:
                     dj.schema(schema_name).drop(force=force_drop)
-                except OperationalError as e:
-                    recent_err = e
+                except (OperationalError, IntegrityError) as e:
+                    recent_errs.append(str(e))  # Add to list for current loop
                 else:
                     schemas_with_prefix.remove(schema_name)
                     if force_drop:
@@ -88,5 +88,6 @@ def drop_schemas(prefix, dry_run=True, ordered=False, force_drop=False):
             assert n_schemas_initial != len(schemas_with_prefix), (
                 f"Could not drop any of the following schemas:\n\t"
                 + "\n\t".join(schemas_with_prefix)
-                + f"\nMost recent error:\n\t{recent_err}"
+                + f"\Recent errors:\n\t"
+                + "\n\t".join(recent_errs)
             )
