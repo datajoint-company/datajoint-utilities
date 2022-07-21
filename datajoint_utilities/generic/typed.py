@@ -355,7 +355,7 @@ class KWA:
         keys = KWA._keys_iterable(keys_from)
         extracted_kwargs = subset(kwargs, *keys)
         other_kwargs = {
-            k: v for k, v in kwargs.items() if k not in extracted_kwargs.keys()
+            k: v for k, v in kwargs.items() if k not in extracted_kwargs
         }
         return extracted_kwargs, other_kwargs
 
