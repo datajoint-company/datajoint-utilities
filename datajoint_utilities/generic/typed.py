@@ -238,7 +238,7 @@ def arr_bool(obj: object) -> bool:
 def _in_switch(
     x: typ.Container[object], y: typ.Container[object], is_in: bool = True
 ) -> bool:
-    return x in y if is_in else x not in y
+    return x in y == is_in
 
 
 def _extract(
