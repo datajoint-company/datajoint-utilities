@@ -80,7 +80,7 @@ def drop_schemas(prefix, dry_run=True, ordered=False, force_drop=False):
                 try:
                     dj.schema(schema_name).drop(force=force_drop)
                 except (OperationalError, IntegrityError) as e:
-                    recent_errs = [*recent_errs, str(e)]  # Add to list for current loop
+                    recent_errs.append(str(e))  # Add to list for current loop
                 else:
                     schemas_with_prefix.remove(schema_name)
                     if force_drop:
