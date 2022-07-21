@@ -5,23 +5,8 @@ detect_min_python_version(3, 10)
 import datetime
 import inspect
 import types
+import typing as typ
 from pathlib import Path
-from typing import (
-    Any,
-    ItemsView,
-    Literal,
-    Mapping,
-    MutableMapping,
-    Protocol,
-    Sequence,
-    Sized,
-    TypeAlias,
-    TypedDict,
-    TypeGuard,
-    TypeVar,
-    cast,
-    runtime_checkable,
-)
 from uuid import UUID
 
 import datajoint as dj
@@ -29,70 +14,73 @@ from numpy import bool_, complex_, float_, int_, ndarray, str_
 from numpy.typing import NDArray
 
 # Misc. typing -------------------------------------------------------------------------
-T = TypeVar("T")
-DictObj: TypeAlias = dict[str, object]
-DictAny: TypeAlias = dict[str, Any]
-AnyMap: TypeAlias = Mapping[str, object]
-AnyMutMap: TypeAlias = MutableMapping[str, object]
-StrNone: TypeAlias = str | None
-StrPath: TypeAlias = str | Path
-StrPathNone: TypeAlias = str | Path | None
-StrTuple: TypeAlias = tuple[str, ...]
-StrPathParts: TypeAlias = str | Path | StrTuple
-FrameType: TypeAlias = types.FrameType
-FrameInfo: TypeAlias = inspect.FrameInfo
-FrameInfoList: TypeAlias = list[FrameInfo]
-FrameStack: TypeAlias = FrameInfoList | FrameType
-FrameFile: TypeAlias = str | Path | FrameInfo
-FrameFileNone: TypeAlias = str | Path | FrameInfo | None
-AnyMapMapSeq: TypeAlias = AnyMap | Sequence[AnyMap]
-AnyMapStrSeq: TypeAlias = AnyMap | Sequence[str] | str
-TimeStampable: TypeAlias = datetime.datetime | datetime.date | datetime.timedelta
-UUIDStr: TypeAlias = str | UUID
-UUIDLike: TypeAlias = (
-    str | UUID | MutableMapping[str, str | UUID] | dj.expression.QueryExpression
+T = typ.TypeVar("T")
+DictObj: typ.TypeAlias = dict[str, object]
+DictAny: typ.TypeAlias = dict[str, typ.Any]
+AnyMap: typ.TypeAlias = typ.Mapping[str, object]
+AnyMutMap: typ.TypeAlias = typ.MutableMapping[str, object]
+StrNone: typ.TypeAlias = str | None
+StrPath: typ.TypeAlias = str | Path
+StrPathNone: typ.TypeAlias = str | Path | None
+StrTuple: typ.TypeAlias = tuple[str, ...]
+StrPathParts: typ.TypeAlias = str | Path | StrTuple
+FrameType: typ.TypeAlias = types.FrameType
+FrameInfo: typ.TypeAlias = inspect.FrameInfo
+FrameInfoList: typ.TypeAlias = list[FrameInfo]
+FrameStack: typ.TypeAlias = FrameInfoList | FrameType
+FrameFile: typ.TypeAlias = str | Path | FrameInfo
+FrameFileNone: typ.TypeAlias = str | Path | FrameInfo | None
+AnyMapMapSeq: typ.TypeAlias = AnyMap | typ.Sequence[AnyMap]
+AnyMapStrSeq: typ.TypeAlias = AnyMap | typ.Sequence[str] | str
+TimeStampable: typ.TypeAlias = datetime.datetime | datetime.date | datetime.timedelta
+UUIDStr: typ.TypeAlias = str | UUID
+UUIDLike: typ.TypeAlias = (
+    str | UUID | typ.MutableMapping[str, str | UUID] | dj.expression.QueryExpression
 )
-ModuleType: TypeAlias = types.ModuleType
+ModuleType: typ.TypeAlias = types.ModuleType
 
 
-def is_pathstr(obj: object) -> TypeGuard[StrPath]:
+def is_pathstr(obj: object) -> typ.TypeGuard[StrPath]:
     return isinstance(obj, (Path, str))
 
 
-def is_frame(obj: object) -> TypeGuard[FrameType]:
+def is_frame(obj: object) -> typ.TypeGuard[FrameType]:
     """Determines whether and object is a frame from inspect.currentframe."""
     return isinstance(obj, types.FrameType)
 
 
-def is_frame_info(obj: object) -> TypeGuard[FrameInfo]:
+def is_frame_info(obj: object) -> typ.TypeGuard[FrameInfo]:
     """Determines whether and object is a frame from inspect.stack list."""
     return isinstance(obj, inspect.FrameInfo)
 
 
-def is_frame_info_list(obj: object) -> TypeGuard[FrameInfoList]:
+def is_frame_info_list(obj: object) -> typ.TypeGuard[FrameInfoList]:
     """Determines whether and object is a stack list inspect.stack."""
     if not isinstance(obj, list):
         return False
-    f: Any
+    f: typ.Any
     for f in obj:
         if not is_frame_info(f):
             return False
     return True
 
 
-def is_frame_stack(obj: object) -> TypeGuard[FrameStack]:
+def is_frame_stack(obj: object) -> typ.TypeGuard[FrameStack]:
     return is_frame(obj) or is_frame_info_list(obj)
 
 
-def is_strmap(obj: object, allow_empty: bool = True) -> TypeGuard[AnyMap]:
-    if not isinstance(obj, Mapping):
+def is_strmap(obj: object, allow_empty: bool = True) -> typ.TypeGuard[AnyMap]:
+    if not isinstance(obj, typ.Mapping):
         return False
-    if len(cast(Sized, obj)) == 0:
+    if len(typ.cast(typ.Sized, obj)) == 0:
         return allow_empty
-    return all(isinstance(k, str) for k, _ in cast(ItemsView[Any, Any], obj.items()))
+    return all(
+        isinstance(k, str)
+        for k, _ in typ.cast(typ.ItemsView[typ.Any, typ.Any], obj.items())
+    )
 
 
-def is_uuid_str(obj: object) -> TypeGuard[UUIDStr]:
+def is_uuid_str(obj: object) -> typ.TypeGuard[UUIDStr]:
     if isinstance(obj, UUID):
         return True
     elif isinstance(obj, str):
@@ -103,22 +91,22 @@ def is_uuid_str(obj: object) -> TypeGuard[UUIDStr]:
         return False
 
 
-def is_timestampable(obj: object) -> TypeGuard[TimeStampable]:
+def is_timestampable(obj: object) -> typ.TypeGuard[TimeStampable]:
     return isinstance(obj, (datetime.datetime, datetime.date, datetime.timedelta))
 
 
-@runtime_checkable
-class SupportsBool(Protocol):
+@typ.runtime_checkable
+class SupportsBool(typ.Protocol):
     def __bool__(self) -> bool:
         ...
 
 
 # DataJoint typing ---------------------------------------------------------------------
-T_Table = TypeVar("T_Table", bound=dj.expression.QueryExpression)
-T_UserTable = TypeVar("T_UserTable", bound=dj.user_tables.UserTable)
-BaseTable: TypeAlias = dj.expression.QueryExpression
-UserTable: TypeAlias = dj.user_tables.UserTable
-AnyTable: TypeAlias = (
+T_Table = typ.TypeVar("T_Table", bound=dj.expression.QueryExpression)
+T_UserTable = typ.TypeVar("T_UserTable", bound=dj.user_tables.UserTable)
+BaseTable: typ.TypeAlias = dj.expression.QueryExpression
+UserTable: typ.TypeAlias = dj.user_tables.UserTable
+AnyTable: typ.TypeAlias = (
     dj.expression.QueryExpression
     | dj.table.Table
     | dj.user_tables.UserTable
@@ -129,49 +117,49 @@ AnyTable: TypeAlias = (
     | dj.user_tables.Computed
     | dj.user_tables.Part
 )
-HeadingProp: TypeAlias = Literal["names", "primary_key", "secondary_attributes"]
-DBConnection: TypeAlias = dj.connection.Connection
-ContextLike: TypeAlias = AnyMap | FrameStack | types.ModuleType | str
+HeadingProp: typ.TypeAlias = typ.Literal["names", "primary_key", "secondary_attributes"]
+DBConnection: typ.TypeAlias = dj.connection.Connection
+ContextLike: typ.TypeAlias = AnyMap | FrameStack | types.ModuleType | str
 
 
-class InsertOpts(TypedDict, total=False):
+class InsertOpts(typ.TypedDict, total=False):
     replace: bool
     skip_duplicates: bool
     ignore_extra_fields: bool
     allow_direct_insert: bool | None
 
 
-class InsertCallArgs(TypedDict):
+class InsertCallArgs(typ.TypedDict):
     row: DictObj
     insert_opts: InsertOpts
 
 
-def is_djtable(obj: object) -> TypeGuard[dj.user_tables.UserTable]:
+def is_djtable(obj: object) -> typ.TypeGuard[dj.user_tables.UserTable]:
     return isinstance(obj, BaseTable) or (
         inspect.isclass(obj) and issubclass(obj, BaseTable)
     )
 
 
-def is_parttable(obj: object) -> TypeGuard[dj.user_tables.Part]:
+def is_parttable(obj: object) -> typ.TypeGuard[dj.user_tables.Part]:
     return inspect.isclass(obj) and issubclass(obj, dj.user_tables.Part)
 
 
 # Numpy typing -------------------------------------------------------------------------
-ArrayTypes: TypeAlias = bool_ | complex_ | float_ | int_ | str_
-VecTypes: TypeAlias = bool | complex | float | int | str
-NPArray: TypeAlias = NDArray[ArrayTypes]
-StrArray: TypeAlias = NDArray[str_]
-AnyArray: TypeAlias = NDArray[Any]
-Vector: TypeAlias = Sequence[VecTypes]
-ArrayOrVec: TypeAlias = (
+ArrayTypes: typ.TypeAlias = bool_ | complex_ | float_ | int_ | str_
+VecTypes: typ.TypeAlias = bool | complex | float | int | str
+NPArray: typ.TypeAlias = NDArray[ArrayTypes]
+StrArray: typ.TypeAlias = NDArray[str_]
+AnyArray: typ.TypeAlias = NDArray[typ.Any]
+Vector: typ.TypeAlias = typ.Sequence[VecTypes]
+ArrayOrVec: typ.TypeAlias = (
     NPArray
     | Vector
-    | Sequence[Vector]
-    | Sequence[Sequence[Vector]]
-    | Sequence[Sequence[Sequence[Vector]]]
-    | Sequence[Sequence[Sequence[Sequence[Vector]]]]
+    | typ.Sequence[Vector]
+    | typ.Sequence[typ.Sequence[Vector]]
+    | typ.Sequence[typ.Sequence[typ.Sequence[Vector]]]
+    | typ.Sequence[typ.Sequence[typ.Sequence[typ.Sequence[Vector]]]]
 )
 
 
-def is_ndarray(obj: object) -> TypeGuard[AnyArray]:
+def is_ndarray(obj: object) -> typ.TypeGuard[AnyArray]:
     return isinstance(obj, ndarray)
