@@ -31,7 +31,7 @@ def list_drop_order(prefix):
             # add schema to the list of schema dependents
             depends_on[upstream] = [*depends_on[upstream], schema]
     drop_list = []  # ordered list to drop
-    while len(depends_on):
+    while depends_on:
         drop_list += [k for k, v in depends_on.items() if not v]  # empty is dropable
         depends_on = {k: v for k, v in depends_on.items() if v}  # remove from dict
         for schema in depends_on.keys():
