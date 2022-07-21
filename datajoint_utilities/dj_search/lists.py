@@ -74,7 +74,7 @@ def drop_schemas(prefix, dry_run=True, ordered=False, force_drop=False):
 
     elif not dry_run:
         while schemas_with_prefix:
-            recent_errs = []  # Refresh recent_errs at start of while loop
+            recent_errs = []
             n_schemas_initial = len(schemas_with_prefix)
             for schema_name in schemas_with_prefix:
                 try:
