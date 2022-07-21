@@ -228,7 +228,7 @@ def utc_timestamp(
 def is_empty_string(string: object, none_as_empty: bool = True) -> bool:
     if string is None:
         return none_as_empty
-    return isinstance(string, str) and string == ""
+    return isinstance(string, str) and not string 
 
 
 def arr_bool(obj: object) -> bool:
