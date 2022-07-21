@@ -34,7 +34,7 @@ def list_drop_order(prefix):
     while depends_on:
         drop_list += [k for k, v in depends_on.items() if not v]  # empty is dropable
         depends_on = {k: v for k, v in depends_on.items() if v}  # remove from dict
-        for schema in depends_on.keys():
+        for schema in depends_on:
             # Filter out items already in drop list
             depends_on[schema] = [s for s in depends_on[schema] if s not in drop_list]
 
