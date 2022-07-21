@@ -34,7 +34,7 @@ def list_drop_order(prefix):
     while len(depends_on):
         drop_list += [k for k, v in depends_on.items() if not v]  # empty is dropable
         depends_on = {k: v for k, v in depends_on.items() if v}  # remove from dict
-        for schema in depends_on.keys():  # remove dropable from other values
+        for schema in depends_on.keys():
             # Filter out items already in drop list
             depends_on[schema] = [s for s in depends_on[schema] if s not in drop_list]
 
@@ -74,20 +74,20 @@ def drop_schemas(prefix, dry_run=True, ordered=False, force_drop=False):
 
     elif not dry_run:
         while schemas_with_prefix:
-            recent_errs = ["\t"]
+            recent_errs = []  # Refresh recent_errs at start of while loop
             n_schemas_initial = len(schemas_with_prefix)
             for schema_name in schemas_with_prefix:
                 try:
                     dj.schema(schema_name).drop(force=force_drop)
                 except (OperationalError, IntegrityError) as e:
-                    recent_errs = [*recent_errs, str(e)]
+                    recent_errs = [*recent_errs, str(e)]  # Add to list for current loop
                 else:
                     schemas_with_prefix.remove(schema_name)
                     if force_drop:
                         print(schema_name)
-            recent_errs_concat = "\n\t".join(recent_errs)
             assert n_schemas_initial != len(schemas_with_prefix), (
                 f"Could not drop any of the following schemas:\n\t"
                 + "\n\t".join(schemas_with_prefix)
-                + f"\Recent errors:{recent_errs_concat}"
+                + f"\Recent errors:\n\t"
+                + "\n\t".join(recent_errs)
             )
