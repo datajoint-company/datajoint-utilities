@@ -1,8 +1,8 @@
 import datajoint_utilities.typing as djt  # isort: skip
 
 import inspect
+import typing as typ
 from pathlib import Path
-from typing import Any, Mapping, NoReturn
 
 import datajoint as dj
 import datajoint_utilities.generic.typed as gt
@@ -54,7 +54,7 @@ class LazySchema(dj.Schema):
         create_schema: bool = True,
         create_tables: bool = True,
         add_objects: djt.ContextLike | None = None,
-        **kwargs: Any,
+        **kwargs: typ.Any,
     ):
         super().__init__(
             schema_name=None,
@@ -96,7 +96,7 @@ class LazySchema(dj.Schema):
         add_context = self._context_info(self.add_objects) or {}
         add_context |= self._context_info(add_objects) or {}
         if not self._is_active():
-            self.declare_list: list[tuple[object, dict[str, Any]]] = [
+            self.declare_list: list[tuple[object, dict[str, typ.Any]]] = [
                 (cls, self._context_info(context) or {})
                 for cls, context in self.declare_list
                 if context is not None
@@ -111,10 +111,10 @@ class LazySchema(dj.Schema):
 
     def _context_info(
         self, context: djt.ContextLike | None
-    ) -> dict[str, Any] | None | NoReturn:
+    ) -> dict[str, typ.Any] | None | typ.NoReturn:
         if context is None:
             return None
-        if isinstance(context, Mapping):
+        if isinstance(context, typ.Mapping):
             return dict(context)
         if djt.is_frame_stack(context):
             return gt.calling_frame_locals(context)

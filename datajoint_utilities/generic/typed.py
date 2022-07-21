@@ -168,7 +168,7 @@ def as_path_parts(file_or_parts: djt.StrPathParts) -> djt.StrTuple:
             f"not '{type(file_or_parts)}'"
         )
 
-    return (*filter(None, parts),)
+    return tuple(p for p in parts if p)
 
 
 def chain_path_parts(*args: djt.StrPathParts, sep: str = ".") -> str:
