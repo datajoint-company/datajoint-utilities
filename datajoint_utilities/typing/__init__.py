@@ -89,10 +89,7 @@ def is_strmap(obj: object, allow_empty: bool = True) -> TypeGuard[AnyMap]:
         return False
     if len(cast(Sized, obj)) == 0:
         return allow_empty
-    return all(
-        isinstance(k, str) and isinstance(v, object)
-        for k, v in cast(ItemsView[Any, Any], obj.items())
-    )
+    return all(isinstance(k, str) for k, _ in cast(ItemsView[Any, Any], obj.items()))
 
 
 def is_uuid_str(obj: object) -> TypeGuard[UUIDStr]:

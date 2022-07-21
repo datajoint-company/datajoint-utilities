@@ -76,7 +76,7 @@ class LazySchema(dj.Schema):
             raise ValueError("No context provided.")
         if djt.is_parttable(cls):
             raise dj.errors.DataJointError(
-                "The schema decorator should not be applied to Part relations"
+                "The schema decorator should not be applied to Part tables."
             )
         if self.is_activated():
             self._decorate_master(cls, self._context_info(context))  # type: ignore

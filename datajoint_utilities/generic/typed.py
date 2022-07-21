@@ -7,23 +7,12 @@ import inspect
 import itertools
 import json
 import os
+import typing as typ
 from dataclasses import dataclass, field
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError, packages_distributions
 from importlib.util import find_spec
 from pathlib import Path
-from typing import (
-    ClassVar,
-    Container,
-    Iterable,
-    Literal,
-    Mapping,
-    NoReturn,
-    Sequence,
-    TypedDict,
-    cast,
-    overload,
-)
 from uuid import UUID
 
 import datajoint as dj
@@ -36,7 +25,7 @@ def select_stack_frame(stack: djt.FrameInfoList, back: int = 1) -> djt.FrameInfo
     return stack[back] if len(stack) > back else None
 
 
-def calling_frame(frame: djt.FrameStack) -> djt.FrameType | None | NoReturn:
+def calling_frame(frame: djt.FrameStack) -> djt.FrameType | None | typ.NoReturn:
     if djt.is_frame(frame):
         return frame.f_back or None
     if djt.is_frame_info_list(frame):
@@ -65,7 +54,7 @@ def calling_frame_file(frame: djt.FrameStack) -> Path | None:
 
 def get_module_objects(
     module: str | djt.ModuleType, must_work: bool = True
-) -> djt.DictObj | None | NoReturn:
+) -> djt.DictObj | None | typ.NoReturn:
     if isinstance(module, str):
         module = import_module(module)
     if inspect.ismodule(module):
@@ -75,7 +64,6 @@ def get_module_objects(
             f"The argument 'module'<{type(module).__name__}> must be "
             "a module's name as a string or ModuleType object."
         )
-    return None
 
 
 def module_name_from_frame(source: djt.FrameStack) -> str:
@@ -99,26 +87,26 @@ def pkg_name_from_frame(source: djt.FrameStack, fallback: str = "") -> str:
 
 
 # path functions -----------------------------------------------------------------------
-@overload
+@typ.overload
 def pkg_abspath(
     import_name: djt.StrNone = None,
-    must_exist: Literal[True] = True,
-) -> Path | NoReturn:
+    must_exist: typ.Literal[True] = True,
+) -> Path | typ.NoReturn:
     ...
 
 
-@overload
+@typ.overload
 def pkg_abspath(
     import_name: djt.StrNone = None,
-    must_exist: Literal[False] = False,
+    must_exist: typ.Literal[False] = False,
 ) -> Path | None:
     ...
 
 
 def pkg_abspath(
     import_name: djt.StrNone = None,
-    must_exist: Literal[True, False] = True,
-) -> Path | None | NoReturn:
+    must_exist: typ.Literal[True, False] = True,
+) -> Path | None | typ.NoReturn:
     import_name = import_name or pkg_name_from_frame(inspect.stack())
     pkg_spec = find_spec(import_name)
     if not pkg_spec:
@@ -143,12 +131,12 @@ def pkg_relpath(
     return src_path.relative_to(root_path) if src_is_rel else None
 
 
-@overload
+@typ.overload
 def as_path_parts(file_or_parts: djt.StrTuple) -> djt.StrTuple:
     ...
 
 
-@overload
+@typ.overload
 def as_path_parts(file_or_parts: djt.StrPath) -> djt.StrTuple:
     ...
 
@@ -193,7 +181,6 @@ def filepath_from_frame(source: str | Path | djt.FrameStack | None) -> Path | No
         return calling_frame_file(source)
     if djt.is_pathstr(source) and source:
         return Path(source)
-    return None
 
 
 @dataclass
@@ -248,13 +235,15 @@ def arr_bool(obj: object) -> bool:
     return obj.size != 0 if djt.is_ndarray(obj) else bool(obj)
 
 
-def _in_switch(x: Container[object], y: Container[object], is_in: bool = True) -> bool:
+def _in_switch(
+    x: typ.Container[object], y: typ.Container[object], is_in: bool = True
+) -> bool:
     return x in y if is_in else x not in y
 
 
 def _extract(
     dict_: djt.AnyMap,
-    keys: Iterable[str],
+    keys: typ.Iterable[str],
     *,
     prefix: str = "",
     suffix: str = "",
@@ -267,22 +256,22 @@ def _extract(
     }
 
 
-class _ExtractOptions(TypedDict, total=False):
+class _ExtractOptions(typ.TypedDict, total=False):
     prefix: str
     suffix: str
     keep: bool
 
 
-@overload
+@typ.overload
 def subset(
-    dict_or_seq_of: Sequence[djt.AnyMap],
+    dict_or_seq_of: typ.Sequence[djt.AnyMap],
     *dict_keys: str,
     **options: Unpack[_ExtractOptions],
 ) -> list[djt.DictObj]:
     ...
 
 
-@overload
+@typ.overload
 def subset(
     dict_or_seq_of: djt.AnyMap,
     *dict_keys: str,
@@ -296,7 +285,7 @@ def subset(
     *dict_keys: str,
     **options: Unpack[_ExtractOptions],
 ) -> list[djt.DictObj] | djt.DictObj:
-    if isinstance(dict_or_seq_of, Sequence):
+    if isinstance(dict_or_seq_of, typ.Sequence):
         return [_extract(map_, dict_keys, **options) for map_ in dict_or_seq_of]
     if djt.is_strmap(dict_or_seq_of):
         return _extract(dict_or_seq_of, dict_keys, **options)
@@ -310,7 +299,7 @@ class EnumNAError(Exception):
         super().__init__(self.message)
 
 
-def assert_enum(enum: djt.StrNone, enums: Container[str]) -> None | NoReturn:
+def assert_enum(enum: djt.StrNone, enums: typ.Container[str]) -> None | typ.NoReturn:
     if not enum or enum == "NA" or enum not in enums:
         raise EnumNAError(enum)
     return None
@@ -318,7 +307,7 @@ def assert_enum(enum: djt.StrNone, enums: Container[str]) -> None | NoReturn:
 
 # keyword arguments functions ----------------------------------------------------------
 class KWA:
-    _table_insert: ClassVar[djt.InsertOpts] = {
+    _table_insert: typ.ClassVar[djt.InsertOpts] = {
         "replace": False,
         "skip_duplicates": False,
         "ignore_extra_fields": False,
@@ -327,7 +316,7 @@ class KWA:
 
     @staticmethod
     def _keys_iterable(map_: djt.AnyMapStrSeq) -> list[str]:
-        if isinstance(map_, Mapping):
+        if isinstance(map_, typ.Mapping):
             return list(map_.keys())
         elif isinstance(map_, str):
             return [map_]
@@ -341,7 +330,7 @@ class KWA:
 
     @classmethod
     def pop_insert_opts(cls, kwargs: djt.AnyMutMap) -> djt.InsertOpts:
-        return cast(djt.InsertOpts, cls._pop_kwargs(cls._table_insert, kwargs))
+        return typ.cast(djt.InsertOpts, cls._pop_kwargs(cls._table_insert, kwargs))
 
     @classmethod
     def pop_kwargs(
@@ -375,7 +364,7 @@ class KWA:
         cls, kwargs: djt.AnyMutMap
     ) -> tuple[djt.InsertOpts, djt.DictObj]:
         extracted, other = cls._split_kwargs(cls._table_insert, kwargs)
-        return cast(djt.InsertOpts, extracted), other
+        return typ.cast(djt.InsertOpts, extracted), other
 
     @classmethod
     def split_tbl_names(
@@ -404,7 +393,7 @@ def norm_uuid(uuid: object = None) -> UUID | None:
     return UUID(str(uuid)) if djt.is_uuid_str(uuid) else None
 
 
-def json_defaults(obj: object) -> object | NoReturn:
+def json_defaults(obj: object) -> object | typ.NoReturn:
     if djt.is_timestampable(obj):
         return utc_timestamp(obj)
     if djt.is_uuid_str(obj):
@@ -454,7 +443,7 @@ def get_uuid(
     from_key: djt.StrNone = None,
     fallback_key: djt.StrNone = None,
     allow_empty: bool = False,
-) -> UUID | None | NoReturn:
+) -> UUID | None | typ.NoReturn:
     err_extend = ""
     if isinstance(obj, (str, UUID)):
         uuid = norm_uuid(obj)
@@ -599,7 +588,7 @@ def insert_row(
     **insert_opts: Unpack[djt.InsertOpts],
 ) -> djt.T_UserTable:
     cls().insert1(attrs, **insert_opts)  # type: ignore
-    pks: list[str] = cast(list[str], cls.primary_key)
+    pks: list[str] = typ.cast(list[str], cls.primary_key)
     key = subset(attrs, *pks)
     restriction: djt.T_UserTable = cls & key
     if not restriction:
@@ -607,7 +596,9 @@ def insert_row(
     return restriction
 
 
-def dj_table_info(table: djt.UserTable, name_prefix: str = "") -> str:
+def dj_table_info(
+    table: djt.UserTable, name_prefix: str = "", section_level: int = 2
+) -> str:
     db_name: str = table.database  # type: ignore
     cls_name: str = table.__name__ or ""  # type: ignore
     if table.database is None or table.heading is None or not cls_name:
@@ -626,7 +617,7 @@ def dj_table_info(table: djt.UserTable, name_prefix: str = "") -> str:
     table_attrs = "\n".join(table_attrs)
     nl = "\n\n"
     return (
-        f"{nl}## {table_name}{nl}"
+        f"{nl}{'#' * section_level} {table_name}{nl}"
         f"_{table_comment}_{nl}"
         f"**Attributes**{nl}```\n{table_attrs}\n```{nl}"
         f"**Database**{nl}**_`{db_name}`_**{nl}"
@@ -634,19 +625,24 @@ def dj_table_info(table: djt.UserTable, name_prefix: str = "") -> str:
     )
 
 
-def markdown_dj_tables(schema: str | djt.ModuleType):
-    if isinstance(schema, str):
-        schema = importlib.import_module(schema)
-    table_info = ["# DataJoint Tables\n\n"]
+def markdown_dj_tables(
+    schema_module: str | djt.ModuleType, section_start: int = 2
+) -> str:
+    if isinstance(schema_module, str):
+        schema_module = importlib.import_module(schema_module)
+    table_info = [f"{'#' * section_start} DataJoint Tables\n"]
     for table in [
-        getattr(schema, name) for name, _ in inspect.getmembers(schema, djt.is_djtable)
+        getattr(schema_module, name)
+        for name, _ in inspect.getmembers(schema_module, djt.is_djtable)
     ]:
-        table_info.append(dj_table_info(table))
+        table_info.append(dj_table_info(table, section_level=section_start + 1))
         table_info.extend(
-            dj_table_info(part_table, table.__name__)
+            dj_table_info(
+                part_table, name_prefix=table.__name__, section_level=section_start + 2
+            )
             for part_table in [
                 getattr(table, name)
                 for name, _ in inspect.getmembers(table, djt.is_parttable)
             ]
         )
-    return "\n\n".join(table_info)
+    return "\n".join(table_info)
