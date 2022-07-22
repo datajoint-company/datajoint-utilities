@@ -9,9 +9,9 @@ import datajoint_utilities.generic.typed as gt
 
 
 def _src_file_relative_to_pkg(
-    source: djt.FrameStack, package: djt.StrNone = None
+    source: djt.FrameStack, package: str | None = None
 ) -> gt.SourceFileInfo | None:
-    src_file = gt.filepath_from_frame(source)
+    src_file = gt.path_maybe_from_frame(source)
     if not (src_file and src_file.is_absolute()):
         return None
     pkg_name = package or gt.pkg_name_from_frame(source)
@@ -23,10 +23,10 @@ def _src_file_relative_to_pkg(
 
 def make_lazy_schema_name(
     source: djt.FrameStack | None,
-    package: djt.StrNone = None,
+    package: str | None = None,
     *,
-    start_dirname: djt.StrPathNone = None,
-) -> djt.StrNone:
+    start_dirname: str | Path | None = None,
+) -> str | None:
     src = _src_file_relative_to_pkg(source or inspect.stack(), package)
     if src is None:
         return None
@@ -47,7 +47,7 @@ def make_lazy_schema_name(
 class LazySchema(dj.Schema):
     def __init__(
         self,
-        schema_name: djt.StrNone = None,
+        schema_name: str | None = None,
         context: djt.ContextLike | None = None,
         *,
         connection: djt.DBConnection | None = None,
@@ -86,7 +86,7 @@ class LazySchema(dj.Schema):
 
     def activate(
         self,
-        schema_name: djt.StrNone = None,
+        schema_name: str | None = None,
         *,
         connection: djt.DBConnection | None = None,
         create_schema: bool | None = None,
@@ -123,11 +123,13 @@ class LazySchema(dj.Schema):
         raise TypeError(f"Invalid context type: {type(context).__name__}")
 
     def _is_active(self) -> bool:
-        if not self.is_activated() or self.connection is None:  # type: ignore
-            return False
-        return bool(
-            self.connection.query(  # type: ignore
-                "SELECT schema_name FROM information_schema.schemata "
-                f"WHERE schema_name = '{self.database}'"  # type: ignore
-            ).rowcount
+        return (
+            bool(
+                self.connection.query(  # type: ignore
+                    "SELECT schema_name FROM information_schema.schemata "
+                    f"WHERE schema_name = '{self.database}'"  # type: ignore
+                ).rowcount
+            )
+            if (self.is_activated() and self.connection is not None)  # type: ignore
+            else False
         )

@@ -14,34 +14,23 @@ from numpy import bool_, complex_, float_, int_, ndarray, str_
 from numpy.typing import NDArray
 
 # Misc. typing -------------------------------------------------------------------------
-T = typ.TypeVar("T")
+MapObj: typ.TypeAlias = typ.Mapping[str, object]
+MutMapObj: typ.TypeAlias = typ.MutableMapping[str, object]
 DictObj: typ.TypeAlias = dict[str, object]
 DictAny: typ.TypeAlias = dict[str, typ.Any]
-AnyMap: typ.TypeAlias = typ.Mapping[str, object]
-AnyMutMap: typ.TypeAlias = typ.MutableMapping[str, object]
-StrNone: typ.TypeAlias = str | None
-StrPath: typ.TypeAlias = str | Path
-StrPathNone: typ.TypeAlias = str | Path | None
-StrTuple: typ.TypeAlias = tuple[str, ...]
-StrPathParts: typ.TypeAlias = str | Path | StrTuple
 FrameType: typ.TypeAlias = types.FrameType
 FrameInfo: typ.TypeAlias = inspect.FrameInfo
 FrameInfoList: typ.TypeAlias = list[FrameInfo]
 FrameStack: typ.TypeAlias = FrameInfoList | FrameType
-FrameFile: typ.TypeAlias = str | Path | FrameInfo
-FrameFileNone: typ.TypeAlias = str | Path | FrameInfo | None
-AnyMapMapSeq: typ.TypeAlias = AnyMap | typ.Sequence[AnyMap]
-AnyMapStrSeq: typ.TypeAlias = AnyMap | typ.Sequence[str] | str
 TimeStampable: typ.TypeAlias = datetime.datetime | datetime.date | datetime.timedelta
-UUIDStr: typ.TypeAlias = str | UUID
-UUIDLike: typ.TypeAlias = (
-    str | UUID | typ.MutableMapping[str, str | UUID] | dj.expression.QueryExpression
+ContainsUUID: typ.TypeAlias = (
+    str | UUID | typ.Mapping[str, str | UUID] | dj.user_tables.UserTable
 )
 ModuleType: typ.TypeAlias = types.ModuleType
 
 
-def is_pathstr(obj: object) -> typ.TypeGuard[StrPath]:
-    return isinstance(obj, (Path, str))
+def is_pathstr(obj: object) -> typ.TypeGuard[str | Path]:
+    return isinstance(obj, (str, Path))
 
 
 def is_frame(obj: object) -> typ.TypeGuard[FrameType]:
@@ -69,7 +58,7 @@ def is_frame_stack(obj: object) -> typ.TypeGuard[FrameStack]:
     return is_frame(obj) or is_frame_info_list(obj)
 
 
-def is_strmap(obj: object, allow_empty: bool = True) -> typ.TypeGuard[AnyMap]:
+def is_strmap(obj: object, allow_empty: bool = True) -> typ.TypeGuard[MapObj]:
     if not isinstance(obj, typ.Mapping):
         return False
     if len(typ.cast(typ.Sized, obj)) == 0:
@@ -80,7 +69,7 @@ def is_strmap(obj: object, allow_empty: bool = True) -> typ.TypeGuard[AnyMap]:
     )
 
 
-def is_uuid_str(obj: object) -> typ.TypeGuard[UUIDStr]:
+def is_uuid_str(obj: object) -> typ.TypeGuard[str | UUID]:
     if isinstance(obj, UUID):
         return True
     elif isinstance(obj, str):
@@ -93,12 +82,6 @@ def is_uuid_str(obj: object) -> typ.TypeGuard[UUIDStr]:
 
 def is_timestampable(obj: object) -> typ.TypeGuard[TimeStampable]:
     return isinstance(obj, (datetime.datetime, datetime.date, datetime.timedelta))
-
-
-@typ.runtime_checkable
-class SupportsBool(typ.Protocol):
-    def __bool__(self) -> bool:
-        ...
 
 
 # DataJoint typing ---------------------------------------------------------------------
@@ -119,7 +102,7 @@ AnyTable: typ.TypeAlias = (
 )
 HeadingProp: typ.TypeAlias = typ.Literal["names", "primary_key", "secondary_attributes"]
 DBConnection: typ.TypeAlias = dj.connection.Connection
-ContextLike: typ.TypeAlias = AnyMap | FrameStack | types.ModuleType | str
+ContextLike: typ.TypeAlias = MapObj | FrameStack | types.ModuleType | str
 
 
 class InsertOpts(typ.TypedDict, total=False):
