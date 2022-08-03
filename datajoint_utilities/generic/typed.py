@@ -1,5 +1,4 @@
 import datajoint_utilities.typing as djt  # isort: skip
-
 import datetime as dt
 import hashlib
 import importlib
@@ -7,6 +6,7 @@ import inspect
 import itertools
 import json
 import os
+import re
 import typing as typ
 from dataclasses import dataclass, field
 from importlib import import_module
@@ -17,7 +17,8 @@ from uuid import UUID
 
 import datajoint as dj
 import typing_extensions as typx
-from datajoint.errors import MissingTableError, QueryError
+import yaml
+from datajoint.errors import MissingTableError
 
 
 # frame stack functions ----------------------------------------------------------------
@@ -510,37 +511,115 @@ def pop_insert_opts(kwargs: djt.MutMapObj) -> djt.InsertOpts:
     )
 
 
-def dj_table_info(
-    table: djt.UserTable, name_prefix: str = "", section_level: int = 2
-) -> str:
-    db_name: str = table.database  # type: ignore
-    cls_name: str = table.__name__ or ""  # type: ignore
-    if table.database is None or table.heading is None or not cls_name:
+class DJTableHeadingInfo(typ.TypedDict):
+    db_name: str
+    comment: str
+    primary_keys: dict[str, djt.AttributesDict]
+    secondary_attributes: dict[str, djt.AttributesDict]
+
+
+def _dj_table_info(table: djt.UserTable) -> dict[str, dict[str, DJTableHeadingInfo]]:
+    table_name = table.__name__ or ""  # type: ignore
+    if table.database is None or table.heading is None or not table_name:
         raise dj.errors.DataJointError(
-            f"Class {cls_name} is not properly declared "
+            f"Class {table_name} is not properly declared "
             "(schema decorator not applied?)"
         )
-    db_table_name: str = table.table_name  # type: ignore
-    table_name = f"{name_prefix}.{cls_name}" if name_prefix else cls_name
-    table_comment: str = (
+    attr_attrs = ["default", "type", "comment"]
+    primary_keys: dict[str, djt.AttributesDict] = {
+        attr: djt.AttributesDict(**subset(table.heading.attributes[attr].todict(), *attr_attrs))  # type: ignore
+        for attr in table.primary_key  # type: ignore
+    }
+    secondary_attributes: dict[str, djt.AttributesDict] = {
+        attr: djt.AttributesDict(**subset(table.heading.attributes[attr].todict(), *attr_attrs))  # type: ignore
+        for attr in table.heading.secondary_attributes  # type: ignore
+    }
+    table_description: str = (
         table.heading.table_status["comment"] if table.heading.table_status else ""
     )
-    table_attrs = str(table.heading).splitlines()
-    if table_attrs[0].startswith("#"):
-        table_attrs = table_attrs[1:]
-    table_attrs = "\n".join(table_attrs)
+    table_db: str = table.database
+    table_db_name: str = table.table_name  # type: ignore
+    return {
+        table_db: {
+            table_name: DJTableHeadingInfo(
+                db_name=table_db_name,
+                comment=table_description,
+                primary_keys=primary_keys,
+                secondary_attributes=secondary_attributes,
+            )
+        }
+    }
+
+
+def _dj_table_heading_attrs_codeblock(
+    dict_: dict[str, djt.AttributesDict], max_width: int | None = None
+) -> str:
+    attributes: list[str] = []
+    defaults: list[str] = []
+    types: list[str] = []
+    comments: list[str] = []
+    attributes_len: list[int] = []
+    defaults_len: list[int] = []
+    types_len: list[int] = []
+    comments_len: list[int] = []
+
+    for key, attr in dict_.items():
+        attr_default = attr.get("default")
+        attr_type = attr.get("type")
+        attr_comment = attr.get("comment")
+        attributes.append(key)
+        defaults.append(f" = {attr_default}" if attr_default is not None else "")
+        types.append(f" : {attr_type}" if attr_type is not None else "")
+        comments.append(f"  # {attr_comment}" if attr_comment else "")
+        attributes_len.append(len(attributes[-1]))
+        defaults_len.append(len(defaults[-1]))
+        types_len.append(len(types[-1]))
+        comments_len.append(len(comments[-1]))
+
+    lines: list[str] = []
+    max_width = int(max_width) if max_width is not None else 999
+    for attr, default, type_, comment in zip(attributes, defaults, types, comments):
+        lines.append(
+            f"{attr:{min(max(attributes_len), max_width)}}"
+            f"{default:{min(max(defaults_len), max_width)}}"
+            f"{type_:{min(max(types_len), max_width)}}"
+            f"{comment:{min(max(comments_len), max_width)}}"
+        )
+
+    return "\n".join(lines)
+
+
+def markdown_dj_table(
+    table: djt.UserTable,
+    name_prefix: str = "",
+    section_level: int = 2,
+    max_width: int | None = None,
+) -> str:
+    tbl_info = _dj_table_info(table)
+    db_name = next(iter(tbl_info))
+    table_name = next(iter(tbl_info[db_name]))
+    master_part_name = f"{name_prefix}.{table_name}" if name_prefix else table_name
+    primary_keys = _dj_table_heading_attrs_codeblock(
+        tbl_info[db_name][table_name]["primary_keys"], max_width=max_width
+    )
+    secondary_attributes = _dj_table_heading_attrs_codeblock(
+        tbl_info[db_name][table_name]["secondary_attributes"], max_width=max_width
+    )
     nl = "\n\n"
     return (
-        f"{nl}{'#' * section_level} {table_name}{nl}"
-        f"_{table_comment}_{nl}"
-        f"**Attributes**{nl}```\n{table_attrs}\n```{nl}"
+        f"{nl}{'#' * section_level} {master_part_name}{nl}"
+        f"_{tbl_info[db_name][table_name]['comment']}_{nl}"
+        f"**Primary Keys**{nl}```\n{primary_keys}\n```{nl}"
+        f"**Secondary Attributes**{nl}```\n{secondary_attributes}\n```{nl}"
         f"**Database**{nl}**_`{db_name}`_**{nl}"
-        f"**Table**{nl}**_`{db_table_name}`_**{nl}"
+        f"**Table**{nl}**_`{tbl_info[db_name][table_name]['db_name']}`_**{nl}"
     )
 
 
-def markdown_dj_tables(
-    schema_module: str | djt.ModuleType, section_start: int = 2
+def markdown_dj_schemas(
+    schema_module: str | djt.ModuleType,
+    section_start: int = 2,
+    max_width: int | None = None,
 ) -> str:
     if isinstance(schema_module, str):
         schema_module = importlib.import_module(schema_module)
@@ -549,10 +628,18 @@ def markdown_dj_tables(
         getattr(schema_module, name)
         for name, _ in inspect.getmembers(schema_module, djt.is_djtable)
     ]:
-        table_info.append(dj_table_info(table, section_level=section_start + 1))
+        table_info.append("-" * 79)
+        table_info.append(
+            markdown_dj_table(
+                table, section_level=section_start + 1, max_width=max_width
+            )
+        )
         table_info.extend(
-            dj_table_info(
-                part_table, name_prefix=table.__name__, section_level=section_start + 2
+            markdown_dj_table(
+                part_table,
+                name_prefix=table.__name__,
+                section_level=section_start + 2,
+                max_width=max_width,
             )
             for part_table in [
                 getattr(table, name)
@@ -560,3 +647,47 @@ def markdown_dj_tables(
             ]
         )
     return "\n".join(table_info)
+
+
+def _split_dj_table_info(
+    table: djt.UserTable, prefix: str = "", db_prefix_split: str | None = None
+) -> tuple[str, str, DJTableHeadingInfo]:
+    table_info = _dj_table_info(table)
+    db_name = next(iter(table_info))
+    table_name = next(iter(table_info[db_name]))
+    table_attrs = table_info[db_name][table_name]
+    table_attrs.pop("db_name")
+    if db_prefix_split:
+        db_name = re.sub(f"^{db_prefix_split}" r"_{0,1}", "", db_name).replace("-", ".")
+    return db_name, f"{prefix}{table_name}", table_attrs
+
+
+def yaml_dj_schemas(
+    schema_module: str | djt.ModuleType, db_prefix_split: str | None = None
+) -> str:
+    if isinstance(schema_module, str):
+        schema_module = importlib.import_module(schema_module)
+    schema_dict = {}
+    for table in [
+        getattr(schema_module, name)
+        for name, _ in inspect.getmembers(schema_module, djt.is_djtable)
+    ]:
+        db_name, table_name, table_info = _split_dj_table_info(
+            table,
+            db_prefix_split=db_prefix_split,
+        )
+        if db_name not in schema_dict:
+            schema_dict[db_name] = {}
+        schema_dict[db_name][table_name] = table_info
+        for part_table in [
+            getattr(table, name)
+            for name, _ in inspect.getmembers(table, djt.is_parttable)
+        ]:
+            db_name_pt, part_table_name, part_table_info = _split_dj_table_info(
+                part_table, prefix=f"{table_name}.", db_prefix_split=db_prefix_split
+            )
+            if db_name_pt not in schema_dict:
+                schema_dict[db_name_pt] = {}
+            schema_dict[db_name_pt][part_table_name] = part_table_info
+
+    return yaml.dump(schema_dict, sort_keys=False)

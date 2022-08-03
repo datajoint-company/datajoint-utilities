@@ -127,6 +127,29 @@ def is_parttable(obj: object) -> typ.TypeGuard[dj.user_tables.Part]:
     return inspect.isclass(obj) and issubclass(obj, dj.user_tables.Part)
 
 
+class AttributesDict(typ.TypedDict, total=False):
+    name: str
+    type: str
+    in_key: bool
+    nullable: bool
+    default: str | None
+    comment: str
+    autoincrement: bool
+    numeric: bool | None
+    string: bool | None
+    uuid: bool
+    is_blob: bool
+    is_attachment: bool
+    is_filepath: bool
+    is_external: bool
+    adapter: dj.AttributeAdapter | None
+    store: str | None
+    unsupported: bool
+    attribute_expression: str | None
+    database: str | None
+    dtype: object
+
+
 # Numpy typing -------------------------------------------------------------------------
 ArrayTypes: typ.TypeAlias = bool_ | complex_ | float_ | int_ | str_
 VecTypes: typ.TypeAlias = bool | complex | float | int | str

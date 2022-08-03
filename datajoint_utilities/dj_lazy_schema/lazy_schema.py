@@ -37,7 +37,7 @@ def make_lazy_schema_name(
         root_schema_idx = [i for i, x in enumerate(pkg_relparts) if x == start_dirname]
         if root_schema_idx and len(pkg_relparts) > 1:
             pkg_relparts = tuple(pkg_relparts[root_schema_idx[0] + 1 :])
-    schema_suffix = gt.chain_path_parts(Path(*pkg_relparts), sep="_")
+    schema_suffix = gt.chain_path_parts(Path(*pkg_relparts), sep="-")
     to_append = {"name": schema_suffix}
     if src.pkg_name:
         to_append["fallback"] = src.pkg_name
