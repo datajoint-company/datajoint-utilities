@@ -3,24 +3,30 @@ from pymysql import IntegrityError, OperationalError
 
 """
 Development helper functions.
-- list_schemas_prefix: returns a list of schemas with a specific prefix
+- _list_schemas_prefix: returns a list of schemas with a specific prefix
 - drop_schemas: Cycles through schemas on a given prefix until all are dropped
 - list_drop_order: Cycles though schemas with a given prefix. List schemas in an order
                    that they could be dropped, to avoid foreign key constraints
 """
 
 
-def list_schemas_prefix(prefix):
-    """Returns list of schemas with a specific prefix"""
-    return [s for s in dj.list_schemas() if s.startswith(prefix)]
+def _list_schemas_prefix(prefix, connection=None):
+    """Returns list of schemas with a given prefix. Helper function, Not for common use.
+
+    Parameters
+    ----------
+    prefix: when retruning a list of schemas, restrict by this prefix
+    connection: Optional parameter passed to datajoint.list_schemas
+    """
+    return [s for s in dj.list_schemas(connection=connection) if s.startswith(prefix)]
 
 
 def list_drop_order(prefix):
     """Returns schema order from bottom-up"""
-    schema_list = list_schemas_prefix(prefix=prefix)
+    schema_list = _list_schemas_prefix(prefix=prefix)
     # schemas as dictionary of empty lists
     depends_on = {s: [] for s in schema_list}
-    for schema in depends_on.keys():
+    for schema in depends_on:
         # make a list of foreign key references
         upstreams = [
             vmod.split("'")[-2]
@@ -29,12 +35,12 @@ def list_drop_order(prefix):
         ]
         for upstream in upstreams:
             # add schema to the list of schema dependents
-            depends_on[upstream] = [*depends_on[upstream], schema]
+            depends_on[upstream].append(schema)
     drop_list = []  # ordered list to drop
     while len(depends_on):
-        drop_list += [k for k, v in depends_on.items() if not v]  # empty is dropable
+        drop_list.extend(k for k, v in depends_on.items() if not v)  # empty is dropable
         depends_on = {k: v for k, v in depends_on.items() if v}  # remove from dict
-        for schema in depends_on.keys():
+        for schema in depends_on:
             # Filter out items already in drop list
             depends_on[schema] = [s for s in depends_on[schema] if s not in drop_list]
 
@@ -66,7 +72,7 @@ def drop_schemas(prefix, dry_run=True, ordered=False, force_drop=False):
     if ordered:
         schemas_with_prefix = list_drop_order(prefix)
     else:
-        schemas_with_prefix = list_schemas_prefix(prefix)
+        schemas_with_prefix = _list_schemas_prefix(prefix)
 
     if dry_run:
         print("Ordered schemas:" if ordered else "Schemas:")
