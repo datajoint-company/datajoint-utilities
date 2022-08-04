@@ -37,7 +37,7 @@ def list_drop_order(prefix):
             # add schema to the list of schema dependents
             depends_on[upstream].append(schema)
     drop_list = []  # ordered list to drop
-    while len(depends_on):
+    while depends_on:
         drop_list.extend(k for k, v in depends_on.items() if not v)  # empty is dropable
         depends_on = {k: v for k, v in depends_on.items() if v}  # remove from dict
         for schema in depends_on:
@@ -86,7 +86,7 @@ def drop_schemas(prefix, dry_run=True, ordered=False, force_drop=False):
                 try:
                     dj.schema(schema_name).drop(force=force_drop)
                 except (OperationalError, IntegrityError) as e:
-                    recent_errs = [*recent_errs, str(e)]  # Add to list for current loop
+                    recent_errs.append(str(e))  # Add to list for current loop
                 else:
                     schemas_with_prefix.remove(schema_name)
                     if force_drop:
