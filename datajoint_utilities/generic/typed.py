@@ -204,14 +204,17 @@ def utc_timestamp(
     precision: float = 1e6,
     tzinfo: dt.tzinfo | None = None,
 ) -> int:
-    if isinstance(datetime, dt.date):
-        datetime = date_to_utcaware(datetime, tzinfo)
-    elif isinstance(datetime, dt.datetime):
-        datetime = datetime_to_utcaware(datetime, tzinfo)
-    elif isinstance(datetime, dt.timedelta):
-        datetime = from_utc_timestamp(0, precision=precision) + datetime
-    else:
+    if datetime is None:
         datetime = dt.datetime.now(tz=dt.timezone.utc)
+    else:
+        # datetime is an instance date, so should be checked first
+        if isinstance(datetime, dt.datetime):
+            datetime = datetime_to_utcaware(datetime, tzinfo)
+        elif isinstance(datetime, dt.date):
+            datetime = date_to_utcaware(datetime, tzinfo)
+        else:
+            # assume timedelta
+            datetime = from_utc_timestamp(0, precision=precision) + datetime
     return int(round(datetime.timestamp() * precision))
 
 
@@ -328,9 +331,7 @@ def json_dumps(obj: object) -> str:
 def to_bytes(obj: object) -> bytes:
     if obj is None or (isinstance(obj, str) and not obj):
         return b""
-    if djt.is_ndarray(obj):
-        return obj.tobytes()
-    return json_dumps(obj).encode()
+    return obj.tobytes() if djt.is_ndarray(obj) else json_dumps(obj).encode()
 
 
 def to_hash(*args: object) -> str:
@@ -489,14 +490,43 @@ def set_missing_configs(
     }
 
 
-def insert_row(
-    cls: type[djt.T_UserTable],
-    attrs: djt.MapObj,
+def insert_and_query(
+    table: type[djt.T_UserTable] | djt.T_UserTable,
+    rows: typ.Sequence[djt.MapObj],
     **insert_opts: typx.Unpack[djt.InsertOpts],
 ) -> djt.T_UserTable:
-    cls().insert1(attrs, **insert_opts)  # type: ignore
-    pks = typ.cast(list[str], cls.primary_key)
-    return typ.cast(djt.T_UserTable, cls & subset(attrs, *pks))
+    table.insert(rows, **insert_opts)  # type: ignore
+    return table & subset(rows, *table.primary_key)  # type: ignore
+
+
+def insert1_and_query(
+    table: type[djt.T_UserTable] | djt.T_UserTable,
+    row: djt.MapObj,
+    **insert_opts: typx.Unpack[djt.InsertOpts],
+) -> djt.T_UserTable:
+    return insert_and_query(table, (row,), **insert_opts)
+
+
+def make_uuids_and_insert_rows(
+    table: type[djt.T_UserTable] | djt.T_UserTable,
+    row_data: djt.MapObj | typ.Sequence[djt.MapObj],
+    uuid_colname: str | None,
+    *uuid_input_keys: str,
+    **insert_opts: djt.InsertOpts,
+) -> djt.T_UserTable:
+    if not isinstance(row_data, typ.Sequence):
+        row_data = (row_data,)
+    if uuid_colname:
+        uuid_unique_keys = set(
+            uuid_input_keys
+            or itertools.chain.from_iterable(list(row) for row in row_data)
+        )
+        uuid_unique_keys.discard(uuid_colname)
+        row_data = [
+            row | {uuid_colname: to_uuid(*uuid.values())}
+            for row, uuid in zip(row_data, subset(row_data, *uuid_unique_keys))
+        ]
+    return insert_and_query(table, row_data, **insert_opts)
 
 
 def split_insert_opts(kwargs: djt.MutMapObj) -> tuple[djt.InsertOpts, djt.MutMapObj]:
@@ -617,35 +647,28 @@ def markdown_dj_table(
 
 
 def markdown_dj_schemas(
-    schema_module: str | djt.ModuleType,
+    module: str | djt.ModuleType,
     section_start: int = 2,
     max_width: int | None = None,
+    title: str = "",
 ) -> str:
-    if isinstance(schema_module, str):
-        schema_module = importlib.import_module(schema_module)
-    table_info = [f"{'#' * section_start} DataJoint Tables\n"]
-    for table in [
-        getattr(schema_module, name)
-        for name, _ in inspect.getmembers(schema_module, djt.is_djtable)
-    ]:
-        table_info.append("-" * 79)
+    if isinstance(module, str):
+        module = importlib.import_module(module)
+    table_info = [f"\n{'#' * max(section_start - 1, 1)} {title}\n\n" if title else "\n"]
+    for cls_name, cls in inspect.getmembers(module, djt.is_djtable) if module else []:
         table_info.append(
-            markdown_dj_table(
-                table, section_level=section_start + 1, max_width=max_width
-            )
+            markdown_dj_table(cls, section_level=section_start + 1, max_width=max_width)
         )
         table_info.extend(
             markdown_dj_table(
                 part_table,
-                name_prefix=table.__name__,
+                name_prefix=cls_name,
                 section_level=section_start + 2,
                 max_width=max_width,
             )
-            for part_table in [
-                getattr(table, name)
-                for name, _ in inspect.getmembers(table, djt.is_parttable)
-            ]
+            for _, part_table in inspect.getmembers(cls, djt.is_parttable)
         )
+        table_info.append("-" * 79)
     return "\n".join(table_info)
 
 
@@ -663,28 +686,21 @@ def _split_dj_table_info(
 
 
 def yaml_dj_schemas(
-    schema_module: str | djt.ModuleType, db_prefix_split: str | None = None
+    module: str | djt.ModuleType, db_prefix_split: str | None = None
 ) -> str:
-    if isinstance(schema_module, str):
-        schema_module = importlib.import_module(schema_module)
+    if isinstance(module, str):
+        module = importlib.import_module(module)
     schema_dict = {}
-    for table in [
-        getattr(schema_module, name)
-        for name, _ in inspect.getmembers(schema_module, djt.is_djtable)
-    ]:
+    for _, cls in inspect.getmembers(module, djt.is_djtable):
         db_name, table_name, table_info = _split_dj_table_info(
-            table,
-            db_prefix_split=db_prefix_split,
+            cls, db_prefix_split=db_prefix_split
         )
         if db_name not in schema_dict:
             schema_dict[db_name] = {}
         schema_dict[db_name][table_name] = table_info
-        for part_table in [
-            getattr(table, name)
-            for name, _ in inspect.getmembers(table, djt.is_parttable)
-        ]:
+        for _, cls_ in inspect.getmembers(cls, djt.is_parttable):
             db_name_pt, part_table_name, part_table_info = _split_dj_table_info(
-                part_table, prefix=f"{table_name}.", db_prefix_split=db_prefix_split
+                cls_, prefix=f"{table_name}.", db_prefix_split=db_prefix_split
             )
             if db_name_pt not in schema_dict:
                 schema_dict[db_name_pt] = {}

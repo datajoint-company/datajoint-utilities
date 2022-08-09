@@ -56,28 +56,39 @@ class LazySchema(dj.Schema):
         add_objects: djt.ContextLike | None = None,
         **kwargs: typ.Any,
     ):
-        super().__init__(
+        frame = inspect.currentframe()
+
+        super().__init__(  # type: ignore
             schema_name=None,
             connection=connection,
             create_schema=create_schema,
             create_tables=create_tables,
         )
+
         self.context = context
         self.add_objects = add_objects
-        self._lazy_schema_name = schema_name or make_lazy_schema_name(
-            kwargs.pop("source", None) or inspect.currentframe(), **kwargs
-        )
+        self.lazy_schema_name = schema_name
+        self.global_context = gt.calling_frame_globals(frame) if frame else {}
+
+        if not self.lazy_schema_name:
+            source = kwargs.pop("source", None) or frame
+            self.lazy_schema_name = (
+                make_lazy_schema_name(source, **kwargs) if source else None
+            )
 
     def __call__(
         self, cls: type[djt.T_UserTable], *, context: djt.ContextLike | None = None
     ) -> type[djt.T_UserTable]:
-        context = context or self.context or inspect.currentframe()
-        if context is None:
-            raise ValueError("No context provided.")
         if djt.is_parttable(cls):
             raise dj.errors.DataJointError(
                 "The schema decorator should not be applied to Part tables."
             )
+
+        frame = inspect.currentframe()
+        self.global_context |= gt.calling_frame_globals(frame) if frame else {}
+        context = context or self.context
+        if context is None:
+            context = gt.calling_frame_locals(frame) if frame else {}
         if self.is_activated():
             self._decorate_master(cls, self._context_info(context))  # type: ignore
         else:
@@ -93,33 +104,32 @@ class LazySchema(dj.Schema):
         create_tables: bool | None = None,
         add_objects: djt.ContextLike | None = None,
     ) -> None:
-        add_context = self._context_info(self.add_objects) or {}
-        add_context |= self._context_info(add_objects) or {}
         if not self._is_active():
             self.declare_list: list[tuple[object, dict[str, typ.Any]]] = [
-                (cls, self._context_info(context) or {})
+                (cls, self._context_info(context))
                 for cls, context in self.declare_list
                 if context is not None
             ]
         super().activate(  # type: ignore
-            schema_name=schema_name or self._lazy_schema_name,
+            schema_name=schema_name or self.lazy_schema_name,
             connection=connection,
             create_schema=create_schema,
             create_tables=create_tables,
-            add_objects=add_context,
+            add_objects=self._context_info(self.add_objects)
+            | self._context_info(add_objects),
         )
 
     def _context_info(
         self, context: djt.ContextLike | None
-    ) -> dict[str, typ.Any] | None | typ.NoReturn:
+    ) -> dict[str, object] | typ.NoReturn:
         if context is None:
-            return None
+            return {}
         if isinstance(context, typ.Mapping):
             return dict(context)
         if djt.is_frame_stack(context):
             return gt.calling_frame_locals(context)
         if isinstance(context, (str, djt.ModuleType)):
-            return gt.get_module_objects(context)
+            return gt.get_module_objects(context) or {}
         raise TypeError(f"Invalid context type: {type(context).__name__}")
 
     def _is_active(self) -> bool:
