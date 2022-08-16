@@ -79,7 +79,7 @@ class LazySchema(dj.Schema):
     def __call__(
         self, cls: type[djt.T_UserTable], *, context: djt.ContextLike | None = None
     ) -> type[djt.T_UserTable]:
-        if djt.is_parttable(cls):
+        if djt.is_djparttable(cls):
             raise dj.errors.DataJointError(
                 "The schema decorator should not be applied to Part tables."
             )

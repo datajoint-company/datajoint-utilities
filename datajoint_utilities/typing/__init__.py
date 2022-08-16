@@ -123,7 +123,7 @@ def is_djtable(obj: object) -> typ.TypeGuard[dj.user_tables.UserTable]:
     )
 
 
-def is_parttable(obj: object) -> typ.TypeGuard[dj.user_tables.Part]:
+def is_djparttable(obj: object) -> typ.TypeGuard[dj.user_tables.Part]:
     return inspect.isclass(obj) and issubclass(obj, dj.user_tables.Part)
 
 

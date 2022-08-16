@@ -294,7 +294,7 @@ def pop_kwargs(
 
 def get_part_tbl(cls: type[djt.T_Table], part: str) -> dj.Part:
     part_table = getattr(cls, part, None)
-    if not djt.is_parttable(part_table):
+    if not djt.is_djparttable(part_table):
         raise MissingTableError(f"Failed to get part table '{part}' from {cls}.")
     return part_table
 
@@ -490,6 +490,47 @@ def set_missing_configs(
     }
 
 
+def new_connection(
+    user: str | None = None,
+    password: str | None = None,
+    host: str | None = None,
+    dj_config: str | Path | None = None,
+    **kwargs: typ.Any,
+) -> dj.Connection:
+    """Alway create a new connection to the database.
+
+    If `dj_config` is provided, it will be used to initialize the database and won't
+    override the current configuration.
+
+    Args:
+        user (str | None, optional): Connection argument passed to dj.conn
+        password (str | None, optional): Connection argument passed to dj.conn
+        host (str | None, optional): Connection argument passed to dj.conn
+        dj_config (str | Path | None, optional): Temporary configuration file to
+            use for the new connection
+
+    Returns:
+        dj.Connection: connection class instance
+    """
+    kwargs.pop("reset", None)
+    if dj_config is not None:
+        with open(dj_config, "r") as fid:
+            tmp_cfg = json.load(fid)
+            with dj.config(**tmp_cfg):
+                return typ.cast(
+                    dj.Connection,
+                    dj.conn(  # type: ignore
+                        host=host, user=user, password=password, reset=True, **kwargs
+                    ),
+                )
+    return typ.cast(
+        dj.Connection,
+        dj.conn(  # type: ignore
+            host=host, user=user, password=password, reset=True, **kwargs
+        ),
+    )
+
+
 def insert_and_query(
     table: type[djt.T_UserTable] | djt.T_UserTable,
     rows: typ.Sequence[djt.MapObj],
@@ -666,7 +707,7 @@ def markdown_dj_schemas(
                 section_level=section_start + 2,
                 max_width=max_width,
             )
-            for _, part_table in inspect.getmembers(cls, djt.is_parttable)
+            for _, part_table in inspect.getmembers(cls, djt.is_djparttable)
         )
         table_info.append("-" * 79)
     return "\n".join(table_info)
@@ -698,7 +739,7 @@ def yaml_dj_schemas(
         if db_name not in schema_dict:
             schema_dict[db_name] = {}
         schema_dict[db_name][table_name] = table_info
-        for _, cls_ in inspect.getmembers(cls, djt.is_parttable):
+        for _, cls_ in inspect.getmembers(cls, djt.is_djparttable):
             db_name_pt, part_table_name, part_table_info = _split_dj_table_info(
                 cls_, prefix=f"{table_name}.", db_prefix_split=db_prefix_split
             )
