@@ -48,10 +48,7 @@ def is_frame_info_list(obj: object) -> typ.TypeGuard[FrameInfoList]:
     if not isinstance(obj, list):
         return False
     f: typ.Any
-    for f in obj:
-        if not is_frame_info(f):
-            return False
-    return True
+    return all(is_frame_info(f) for f in obj)
 
 
 def is_frame_stack(obj: object) -> typ.TypeGuard[FrameStack]:
@@ -67,6 +64,10 @@ def is_strmap(obj: object, allow_empty: bool = True) -> typ.TypeGuard[MapObj]:
         isinstance(k, str)
         for k, _ in typ.cast(typ.ItemsView[typ.Any, typ.Any], obj.items())
     )
+
+
+def is_seq_not_str(obj: object) -> typ.TypeGuard[typ.Sequence[typ.Any]]:
+    return isinstance(obj, typ.Sequence) and not isinstance(obj, str)
 
 
 def is_uuid_str(obj: object) -> typ.TypeGuard[str | UUID]:
