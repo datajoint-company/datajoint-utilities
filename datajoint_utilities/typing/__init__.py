@@ -1,4 +1,4 @@
-from datajoint_utilities.generic.pkgutil import detect_min_python_version
+from datajoint_utilities.generic.util import detect_min_python_version
 
 detect_min_python_version(3, 10)
 
@@ -84,6 +84,36 @@ def is_timestampable(obj: object) -> typ.TypeGuard[TimeStampable]:
     return isinstance(obj, (datetime.datetime, datetime.date, datetime.timedelta))
 
 
+_T = typ.TypeVar("_T")
+
+
+@typ.runtime_checkable
+class NamedTupleProto(typ.Protocol[_T]):
+    _field_defaults: dict[str, typ.Any]
+    _fields: tuple[str, ...]
+
+    def _asdict(self) -> dict[str, typ.Any]:
+        ...
+
+    @classmethod
+    def _make(cls: type[_T], iterable: typ.Iterable[typ.Any]) -> _T:
+        ...
+
+
+NamedTuple: typ.TypeAlias = NamedTupleProto[tuple[typ.Any]]
+
+
+def is_namedtuple(obj: object) -> typ.TypeGuard[NamedTuple]:
+    if not isinstance(obj, tuple):
+        return False
+    return (
+        hasattr(typ.cast(tuple[typ.Any], obj), "_asdict")
+        and hasattr(typ.cast(tuple[typ.Any], obj), "_make")
+        and hasattr(typ.cast(tuple[typ.Any], obj), "_fields")
+        and hasattr(typ.cast(tuple[typ.Any], obj), "_field_defaults")
+    )
+
+
 # DataJoint typing ---------------------------------------------------------------------
 T_Table = typ.TypeVar("T_Table", bound=dj.expression.QueryExpression)
 T_UserTable = typ.TypeVar("T_UserTable", bound=dj.user_tables.UserTable)
@@ -155,6 +185,8 @@ ArrayTypes: typ.TypeAlias = bool_ | complex_ | float_ | int_ | str_
 VecTypes: typ.TypeAlias = bool | complex | float | int | str
 NPArray: typ.TypeAlias = NDArray[ArrayTypes]
 StrArray: typ.TypeAlias = NDArray[str_]
+IntArray: typ.TypeAlias = NDArray[int_]
+FloatArray: typ.TypeAlias = NDArray[float_]
 AnyArray: typ.TypeAlias = NDArray[typ.Any]
 Vector: typ.TypeAlias = typ.Sequence[VecTypes]
 ArrayOrVec: typ.TypeAlias = (

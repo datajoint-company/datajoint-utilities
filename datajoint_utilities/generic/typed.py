@@ -19,6 +19,9 @@ import datajoint as dj
 import typing_extensions as typx
 import yaml
 from datajoint.errors import MissingTableError
+from datajoint_utilities.generic.log import get_logger
+
+log = get_logger(__name__)
 
 
 # frame stack functions ----------------------------------------------------------------
@@ -80,11 +83,14 @@ def module_name_from_frame(source: djt.FrameStack) -> str:
 
 def pkg_name_from_frame(source: djt.FrameStack, fallback: str = "") -> str:
     module_root = module_name_from_frame(source).split(".", maxsplit=1)[0]
-    return (
-        module_root
-        if module_root and module_root in packages_distributions()
-        else fallback
-    )
+    if module_root:
+        if not module_root in packages_distributions():
+            log.warning(
+                f"Package name '{module_root}' not found in list of installed packages."
+            )
+            return fallback
+        return module_root
+    return fallback
 
 
 # path functions -----------------------------------------------------------------------
@@ -551,8 +557,8 @@ def insert1_and_query(
 def make_uuids_and_insert_rows(
     table: type[djt.T_UserTable] | djt.T_UserTable,
     row_data: djt.MapObj | typ.Sequence[djt.MapObj],
-    uuid_colname: str | None,
     *uuid_input_keys: str,
+    uuid_colname: str | None = None,
     **insert_opts: djt.InsertOpts,
 ) -> djt.T_UserTable:
     if not isinstance(row_data, typ.Sequence):
@@ -563,9 +569,14 @@ def make_uuids_and_insert_rows(
             or itertools.chain.from_iterable(list(row) for row in row_data)
         )
         uuid_unique_keys.discard(uuid_colname)
+
+        # should not overwrite existing uuid values even if uuid data has changed
         row_data = [
-            row | {uuid_colname: to_uuid(*uuid.values())}
-            for row, uuid in zip(row_data, subset(row_data, *uuid_unique_keys))
+            {uuid_colname: to_uuid({key: row.get(key) for key in uuid_unique_keys})}
+            | row
+            for row in [
+                {k: v for k, v in row.items() if v is not None} for row in row_data
+            ]
         ]
     return insert_and_query(table, row_data, **insert_opts)
 

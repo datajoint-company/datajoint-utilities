@@ -2,7 +2,7 @@
 
 Location to store generic utilities that can be used across modules and packages and should not be overly specific to some cases. Most likely separate functions or small classes that don't need their own module. 
 
-## `pkgutil.py`
+## `util.py`
 
 Generic, untyped package utilities.
 
