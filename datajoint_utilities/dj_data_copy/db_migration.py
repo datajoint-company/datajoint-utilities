@@ -2,6 +2,7 @@ import sys
 import datajoint as dj
 from tqdm import tqdm
 
+
 """
 Utility for data copy/migration between schemas and tables
 """
@@ -54,7 +55,7 @@ def migrate_schema(
             return getattr(schema_object, table_object_name)
 
     for tbl_name in tbl_names:
-        if {tbl_name.split('.')[0], tbl_name} & set(table_block_list):
+        if (tbl_name in table_block_list) or ("." in tbl_name and tbl_name.split('.')[0] in table_block_list):
             continue
 
         orig_tbl = get_table(origin_schema, tbl_name)
