@@ -122,3 +122,5 @@ notebook
 
 # misc
 **/*.DS_Store
+./experimental
+datajoint_utilities/experimental

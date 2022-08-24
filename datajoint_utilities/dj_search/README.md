@@ -1,9 +1,24 @@
 # dj-search
-DataJoint utility to facilitate text search on a DataJoint pipeline
+DataJoint utility to facilitate schema and text search on a DataJoint pipeline
 
 
 # Usage
 
+## Schema search 
+```
+from datajoint_utilities.dj_search import list_schemas_prefix, drop_schemas, list_drop_order
+
+# list schemas with a given prefix
+list_schemas_prefix('dbprefix1')
+
+# list schemas in an order that they could be dropped, to avoid foreign key constraints
+list_drop_order('dbprefix1')
+
+# drop schemas with a given prefix. Dry run ordered listing is slow.
+drop_schemas(prefix='dbprefix1', dry_run=<bool>, ordered=<bool>, force_drop=<bool>)
+```
+
+## Full search
 ```
 from datajoint_utilities.dj_search import DJSearch
 

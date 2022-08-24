@@ -1,0 +1,39 @@
+# mamba env create -f environment.yml
+# mamba env update -f environment.yml --prune
+name: datajoint-utilities
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.9
+  - pip
+  - setuptools>=62.0.0
+  - cryptography
+  - ipython
+  - matplotlib
+  - minio>=7.0.0
+  - networkx
+  - numpy
+  - otumat
+  - pandas
+  - pydot
+  - pymysql>=0.7.2
+  - pyparsing
+  - tomli
+  - tqdm
+  - urllib3
+  - wheel
+  - termcolor
+  - pytest
+  - pytest-cov
+  - black
+  - flake8
+  - jupyter
+  - notebook
+  - ipykernel
+  - pip:
+      - datajoint
+      - python-dotenv
+      - slack-sdk
+      - ruamel.yaml
+      - "-e ."
