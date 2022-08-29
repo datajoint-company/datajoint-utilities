@@ -6,6 +6,9 @@ from pathlib import Path
 
 import datajoint as dj
 import datajoint_utilities.generic.typed as gt
+from datajoint_utilities.generic.log import get_logger
+
+log = get_logger(__name__)
 
 
 def _src_file_relative_to_pkg(

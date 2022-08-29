@@ -14,6 +14,7 @@ from numpy import bool_, complex_, float_, int_, ndarray, str_
 from numpy.typing import NDArray
 
 # Misc. typing -------------------------------------------------------------------------
+_T = typ.TypeVar("_T")
 MapObj: typ.TypeAlias = typ.Mapping[str, object]
 MutMapObj: typ.TypeAlias = typ.MutableMapping[str, object]
 DictObj: typ.TypeAlias = dict[str, object]
@@ -83,9 +84,6 @@ def is_uuid_str(obj: object) -> typ.TypeGuard[str | UUID]:
 
 def is_timestampable(obj: object) -> typ.TypeGuard[TimeStampable]:
     return isinstance(obj, (datetime.datetime, datetime.date, datetime.timedelta))
-
-
-_T = typ.TypeVar("_T")
 
 
 @typ.runtime_checkable

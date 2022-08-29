@@ -13,6 +13,7 @@ from importlib import import_module
 from importlib.metadata import PackageNotFoundError, packages_distributions
 from importlib.util import find_spec
 from pathlib import Path
+from textwrap import dedent
 from uuid import UUID
 
 import datajoint as dj
@@ -593,6 +594,90 @@ def pop_insert_opts(kwargs: djt.MutMapObj) -> djt.InsertOpts:
     )
 
 
+def table_def_sections(definition: str) -> tuple[str, list[str], list[str]]:
+    def filter_(lst: typ.Iterable[str]) -> list[str]:
+        return [x for x in lst if x]
+
+    lines = filter_(line.strip() for line in dedent(definition).splitlines())
+    table_comment = lines.pop(0) if lines[0].startswith("#") else ""
+    pk, *sa = re.split("^---$", "\n".join(lines), 1, flags=re.MULTILINE)
+    return (
+        table_comment,
+        filter_(pk.splitlines()),
+        filter_("".join(sa).splitlines()),
+    )
+
+
+def modify_table_definition(
+    definition: str,
+    primary_key: tuple[list[str], list[str]] | None = None,
+    secondary_attributes: tuple[list[str], list[str]] | None = None,
+) -> str:
+    """Modify a table definition from the `UserTable` class variable `definition`.
+
+    Args:
+        definition (str):
+            UserTable multiline str definition
+        primary_key (tuple[list[str], list[str]] | None, optional):
+            primary key lines to prepend or append.
+        secondary_attributes (tuple[list[str], list[str]] | None, optional):
+            secondary attributes lines to prepend or append.
+
+    Returns:
+        str: modified definition
+
+    Examples:
+        tuple format: `([lines to insert at the beginning], [lines to append at the end])`
+
+            modify_table_definition(
+                UserTable.definition,
+                primary_key=(["id"], []),
+                secondary_attributes=(["name"], ["description", "comment"]),
+            )
+    """
+    if not definition:
+        return definition
+
+    def normalize_tuple_list(
+        obj: tuple[list[str], list[str]] | tuple[list[str]] | list[str] | str | None
+    ) -> tuple[list[str], list[str]]:
+        if obj is None:
+            return [], []
+        if isinstance(obj, str):
+            return [], [obj]
+        if isinstance(obj, tuple) and all(not isinstance(x, str) for x in obj):
+            if len(obj) == 1:
+                return [], obj[0]
+            else:
+                return obj[0], obj[1]
+        return [], obj
+
+    comment, pk, sa = table_def_sections(definition)
+    pk_ = normalize_tuple_list(primary_key)
+    sa_ = normalize_tuple_list(secondary_attributes)
+    pk = pk_[0] + pk + pk_[1]
+    sa = sa_[0] + sa + sa_[1]
+
+    def_ = [comment] + pk if comment else pk
+    return "\n".join((def_ + ["---"] + sa) if sa else def_)
+
+
+def modify_table_definition_inplace(
+    table: type[djt.T_UserTable],
+    primary_key: tuple[list[str], list[str]] | None = None,
+    secondary_attributes: tuple[list[str], list[str]] | None = None,
+) -> type[djt.T_UserTable]:
+    table.definition = modify_table_definition(
+        table.definition,
+        primary_key,
+        secondary_attributes,
+    )
+    return table
+
+
+# DataJoint schema info ----------------------------------------------------------------
+
+
 class DJTableHeadingInfo(typ.TypedDict):
     db_name: str
     comment: str
@@ -733,13 +818,15 @@ def _split_dj_table_info(
     table_attrs = table_info[db_name][table_name]
     table_attrs.pop("db_name")
     if db_prefix_split:
-        db_name = re.sub(f"^{db_prefix_split}" r"_{0,1}", "", db_name).replace("-", ".")
+        regex = f"^{db_prefix_split}" r"_{0,1}"
+        if re.match(regex, db_name):
+            db_name = re.sub(regex, "", db_name).replace("-", ".")
     return db_name, f"{prefix}{table_name}", table_attrs
 
 
-def yaml_dj_schemas(
+def dj_schema_info_to_dict(
     module: str | djt.ModuleType, db_prefix_split: str | None = None
-) -> str:
+) -> dict[str, object]:
     if isinstance(module, str):
         module = importlib.import_module(module)
     schema_dict = {}
@@ -758,4 +845,40 @@ def yaml_dj_schemas(
                 schema_dict[db_name_pt] = {}
             schema_dict[db_name_pt][part_table_name] = part_table_info
 
-    return yaml.dump(schema_dict, sort_keys=False)
+    return schema_dict
+
+
+def yaml_dj_schemas(
+    module: str | djt.ModuleType, db_prefix_split: str | None = None
+) -> str:
+    return yaml.dump(
+        dj_schema_info_to_dict(module, db_prefix_split=db_prefix_split), sort_keys=False
+    )
+
+
+def yaml_dj_schemas_compact(
+    module: str | djt.ModuleType,
+    db_prefix_split: str | None = None,
+    block_indent: int = 0,
+) -> str:
+    mapping = dj_schema_info_to_dict(module, db_prefix_split=db_prefix_split)
+    text = []
+    indent = f'{"":{block_indent}}'
+    deindent = 88 - block_indent
+    for schema, tables in mapping.items():
+        for table, attrs in tables.items():
+            text.append(f"{indent}{schema}.{table}:")
+            for i, (key, parts) in enumerate(
+                (attrs["primary_keys"] | attrs.get("secondary_attributes", {})).items()
+            ):
+                dash = "- " if i == 0 else ""
+                space = "  " if i > 0 else ""
+                default = f'{parts["default"]}' if parts["default"] else "null"
+                comment = f'{parts["type"].upper()}' + (
+                    f", // {parts['comment']}" if parts["comment"] else ""
+                )
+                line = f"  {space}{dash}{key}: {default} #  "
+                text.append(f"{indent}{line:<{deindent}}{comment}")
+            text.append("")
+
+    return "\n".join(text)
