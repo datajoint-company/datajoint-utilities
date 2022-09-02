@@ -20,17 +20,19 @@ import time
 import json
 import re
 import traceback
-import pymysql
 from datetime import datetime
-
 import datajoint as dj
 import pymysql
+import pandas as pd
 
 _populate_settings = {
     "display_progress": True,
     "reserve_jobs": True,
     "suppress_errors": True,
 }
+
+if dj.__version__ > '0.13.7':
+    _populate_settings['return_success_count'] = True
 
 
 class WorkerLog(dj.Manual):
@@ -83,10 +85,10 @@ class WorkerLog(dj.Manual):
     @classmethod
     def get_recent_jobs(cls, backtrack_minutes=60):
         recent = (
-            cls.proj(
-                minute_elapsed="TIMESTAMPDIFF(MINUTE, process_timestamp, UTC_TIMESTAMP())"
-            )
-            & f"minute_elapsed < {backtrack_minutes}"
+                cls.proj(
+                    minute_elapsed="TIMESTAMPDIFF(MINUTE, process_timestamp, UTC_TIMESTAMP())"
+                )
+                & f"minute_elapsed < {backtrack_minutes}"
         )
 
         recent_jobs = dj.U("process").aggr(
@@ -100,11 +102,12 @@ class WorkerLog(dj.Manual):
 
     @classmethod
     def delete_old_logs(cls, cutoff_days=30):
+        # if latest log is older than cutoff_days, then do nothing
         old_jobs = (
-            cls.proj(
-                elapsed_days=f'TIMESTAMPDIFF(DAY, process_timestamp, "{datetime.utcnow()}")'
-            )
-            & f"elapsed_days > {cutoff_days}"
+                cls.proj(
+                    elapsed_days=f'TIMESTAMPDIFF(DAY, process_timestamp, "{datetime.utcnow()}")'
+                )
+                & f"elapsed_days > {cutoff_days}"
         )
         if old_jobs:
             with dj.config(safemode=False):
@@ -128,7 +131,7 @@ class ErrorLog(dj.Manual):
     user=''           : varchar(255)  # database user
     pid=0             : int unsigned  # system process id
     """
-    
+
     _table_name = "~error_log"
 
     @classmethod
@@ -151,7 +154,7 @@ class ErrorLog(dj.Manual):
             "user": error_entry['user'],
             "pid": error_entry['pid']
         }
-        
+
         if cls & {'process': entry['process'], 'key_hash': entry['key_hash']}:
             cls.update1(entry)
         else:
@@ -179,14 +182,14 @@ class ErrorLog(dj.Manual):
             cls.update1(entry)
         else:
             cls.insert1(entry)
-    
+
     @classmethod
     def delete_old_logs(cls, cutoff_days=30):
         old_jobs = (
-            cls.proj(
-                elapsed_days=f'TIMESTAMPDIFF(DAY, error_timestamp, "{datetime.utcnow()}")'
-            )
-            & f"elapsed_days > {cutoff_days}"
+                cls.proj(
+                    elapsed_days=f'TIMESTAMPDIFF(DAY, error_timestamp, "{datetime.utcnow()}")'
+                )
+                & f"elapsed_days > {cutoff_days}"
         )
         if old_jobs:
             with dj.config(safemode=False):
@@ -202,14 +205,15 @@ class DataJointWorker:
     """
 
     def __init__(
-        self,
-        worker_name,
-        worker_schema_name,
-        *,
-        run_duration=-1,
-        sleep_duration=60,
-        autoclear_error_patterns=[],
-        db_prefix=[""],
+            self,
+            worker_name,
+            worker_schema_name,
+            *,
+            run_duration=-1,
+            sleep_duration=60,
+            max_idled_cycle=-1,
+            autoclear_error_patterns=[],
+            db_prefix=[""],
     ):
         self.name = worker_name
         self._worker_schema = dj.schema(worker_schema_name)
@@ -217,12 +221,15 @@ class DataJointWorker:
         self._worker_schema(ErrorLog)
 
         self._autoclear_error_patterns = autoclear_error_patterns
-        self._run_duration = run_duration
+        self._run_duration = run_duration if run_duration is not None else -1
         self._sleep_duration = sleep_duration
+        self._max_idled_cycle = max_idled_cycle if 'return_success_count' in _populate_settings else -1
         self._db_prefix = [db_prefix] if isinstance(db_prefix, str) else db_prefix
 
         self._processes_to_run = []
         self._pipeline_modules = {}
+        self._idled_cycle_count = None
+        self._run_start_time = None
 
     def __call__(self, process, **kwargs):
         if isinstance(process, dj.user_tables.TableMeta):
@@ -240,12 +247,15 @@ class DataJointWorker:
             )
 
     def _run_once(self):
+        success_count = 0 if 'return_success_count' in _populate_settings else 1
         for process_type, process, kwargs in self._processes_to_run:
             WorkerLog.log_process_job(
                 process, worker_name=self.name, db_prefix=self._db_prefix
             )
             if process_type == "dj_table":
-                process.populate(**{**_populate_settings, **kwargs})
+                status = process.populate(**{**_populate_settings, **kwargs})
+                if 'return_success_count' in _populate_settings:
+                    success_count += status[0]
             elif process_type == "function":
                 process(**kwargs)
 
@@ -258,16 +268,22 @@ class DataJointWorker:
         WorkerLog.delete_old_logs()
         ErrorLog.delete_old_logs()
 
+        return success_count
+
+    def _keep_running(self):
+        exceed_run_duration = not (
+                time.time() - self._run_start_time < self._run_duration
+                or self._run_duration < 0
+        )
+        exceed_max_idled_cycle = 0 < self._max_idled_cycle < self._idled_cycle_count
+        return not (exceed_run_duration or exceed_max_idled_cycle)
+
     def run(self):
-        start_time = time.time()
-        while (
-            time.time() - start_time < self._run_duration
-            or self._run_duration is None
-            or self._run_duration < 0
-        ):
-
-            self._run_once()
-
+        self._run_start_time = time.time()
+        self._idled_cycle_count = 0
+        while self._keep_running():
+            success_count = self._run_once()
+            self._idled_cycle_count += bool(success_count)
             time.sleep(self._sleep_duration)
 
 
@@ -290,21 +306,21 @@ def _clean_up(pipeline_modules, additional_error_patterns=[], db_prefix=""):
     for pipeline_module in pipeline_modules:
         # clear generic error jobs
         (
-            pipeline_module.schema.jobs
-            & 'status = "error"'
-            & [
-                f'error_message LIKE "{e}"'
-                for e in _generic_errors
-            ]
+                pipeline_module.schema.jobs
+                & 'status = "error"'
+                & [
+                    f'error_message LIKE "{e}"'
+                    for e in _generic_errors
+                ]
         ).delete()
         # clear additional error patterns
         additional_error_query = (
-            pipeline_module.schema.jobs
-            & 'status = "error"'
-            & [
-                f'error_message LIKE "{e}"'
-                for e in additional_error_patterns
-            ]
+                pipeline_module.schema.jobs
+                & 'status = "error"'
+                & [
+                    f'error_message LIKE "{e}"'
+                    for e in additional_error_patterns
+                ]
         )
 
         with pipeline_module.schema.jobs.connection.transaction:
@@ -321,6 +337,84 @@ def _clean_up(pipeline_modules, additional_error_patterns=[], db_prefix=""):
                           & 'status = "reserved"'
                           & f'connection_id NOT IN {current_connections}')
             (pipeline_module.schema.jobs & stale_jobs.fetch('KEY')).delete()
+
+
+def get_workflow_progress(db_prefixes):
+    """
+    Function to retrieve the processing status of a workflow comprised of all schemas with the specified prefix(es)
+    Return a dataframe with all Imported/Computed tables, and their corresponding processing status:
+        + total
+        + in queue
+        + reserved
+        + error
+        + ignore
+        + remaining
+
+    Example usage:
+        db_prefixes = ['my_project_']
+        workflow_status = get_workflow_progress(db_prefixes)
+
+    (Note: not topologically sorted)
+    """
+    pipeline_modules = {n: dj.create_virtual_module(n, n) for n in dj.list_schemas() if
+                        re.match('|'.join(db_prefixes), n)}
+
+    if hasattr(list(pipeline_modules.values())[0].schema, 'progress'):
+        workflow_status = []
+        for pipeline_module in pipeline_modules.values():
+            progress = pipeline_module.schema.progress()
+            progress.index = progress.index.map(
+                lambda x: f'{pipeline_module.schema.database}.{x}')
+            workflow_status.append(progress)
+        workflow_status = pd.concat(workflow_status)
+    else:
+        job_status_df = {'reserved': [], 'error': [], 'ignore': []}
+        for pipeline_module in pipeline_modules.values():
+            for job_status in ('reserved', 'error', 'ignore'):
+                status_df = dj.U('table_name').aggr(pipeline_module.schema.jobs & f'status = "{job_status}"',
+                                                    **{job_status: 'count(table_name)'}).fetch(format='frame')
+                status_df.index = status_df.index.map(
+                    lambda x: f'{pipeline_module.schema.database}.{x}')
+                job_status_df[job_status].append(status_df)
+
+        for k, v in job_status_df.items():
+            job_status_df[k] = pd.concat(v)
+
+        process_tables = {}
+        for pipeline_module in pipeline_modules.values():
+            pipeline_module.schema.spawn_missing_classes(context=process_tables)
+
+        process_tables = {process.full_table_name.replace('`', ''): process
+                          for process in process_tables.values() if process.table_name.startswith('_')}
+
+        workflow_status = pd.DataFrame(list(process_tables), columns=['table_name'])
+        workflow_status.set_index('table_name', inplace=True)
+
+        workflow_status['total'] = [len(process_tables[t].key_source)
+                                    for t in workflow_status.index]
+        workflow_status['in_queue'] = [len(process_tables[t].key_source
+                                           - process_tables[t].proj())
+                                       for t in workflow_status.index]
+
+        workflow_status = workflow_status.join(job_status_df['reserved'].join(
+            job_status_df['error'], how='outer').join(
+            job_status_df['ignore'], how='outer'), how='left')
+
+        workflow_status.fillna(0, inplace=True)
+
+        workflow_status[
+            'remaining'] = workflow_status.in_queue - workflow_status.reserved - workflow_status.error - workflow_status.ignore
+
+    def _format_table_name(full_table_name):
+        schema_name, table_name = full_table_name.split('.')
+        schema_name = re.sub('|'.join(db_prefixes), '', schema_name)
+        table_name = dj.utils.to_camel_case(table_name)
+        return f'{schema_name}.{table_name}'
+
+    workflow_status.index = workflow_status.index.map(_format_table_name)
+
+    return workflow_status
+
 
 
 # arg-parser for usage as CLI
