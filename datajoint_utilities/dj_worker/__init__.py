@@ -31,6 +31,8 @@ _populate_settings = {
     "suppress_errors": True,
 }
 
+logger = dj.logger
+
 if dj.__version__ > '0.13.7':
     _populate_settings['return_success_count'] = True
 
@@ -282,8 +284,12 @@ class DataJointWorker:
         self._run_start_time = time.time()
         self._idled_cycle_count = 0
         while self._keep_running():
-            success_count = self._run_once()
-            self._idled_cycle_count += bool(success_count)
+            try:
+                success_count = self._run_once()
+            except Exception as e:
+                logger.error(str(e))
+            else:
+                self._idled_cycle_count += bool(success_count)
             time.sleep(self._sleep_duration)
 
 
