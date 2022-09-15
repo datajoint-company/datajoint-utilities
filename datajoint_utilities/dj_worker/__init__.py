@@ -26,6 +26,8 @@ from datetime import datetime
 import datajoint as dj
 import pymysql
 
+logger = dj.logger
+
 _populate_settings = {
     "display_progress": True,
     "reserve_jobs": True,
@@ -265,8 +267,10 @@ class DataJointWorker:
             or self._run_duration is None
             or self._run_duration < 0
         ):
-
-            self._run_once()
+            try:
+                self._run_once()
+            except Exception as e:
+                logger.error(str(e))
 
             time.sleep(self._sleep_duration)
 
