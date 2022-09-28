@@ -238,7 +238,7 @@ class DataJointWorker:
         self._pipeline_modules = {}
 
     def __call__(self, process, **kwargs):
-        self.add_process_step(process, **kwargs)
+        self.add_step(process, **kwargs)
 
     def add_step(self, callable, position_=None, **kwargs):
         if is_djtable(callable):
