@@ -238,29 +238,28 @@ class DataJointWorker:
         self._pipeline_modules = {}
 
     def __call__(self, process, **kwargs):
-        if is_djtable(process):
-            self.add_table_process(process, **kwargs)
-        elif inspect.isfunction(process) or inspect.ismethod(process):
-            self.add_function_process(process, **kwargs)
+        self.add_process_step(process, **kwargs)
+
+    def add_step(self, callable, position_=None, **kwargs):
+        if is_djtable(callable):
+            index = len(self._processes_to_run) if position_ is None else position_
+            schema_name = callable.database
+            if not schema_name:
+                return
+            self._processes_to_run.insert(index, ("dj_table", callable, kwargs))
+            if schema_name not in self._pipeline_modules:
+                self._pipeline_modules[schema_name] = dj.create_virtual_module(
+                    schema_name, schema_name
+                )
+
+        elif inspect.isfunction(callable) or inspect.ismethod(callable):
+            index = len(self._processes_to_run) if position_ is None else position_
+            self._processes_to_run.insert(index, ("function", callable, kwargs))
+
         else:
             raise NotImplemented(
-                f"Unable to handle processing step of type {type(process)}"
+                f"Unable to handle processing step of type {type(callable)}"
             )
-
-    def add_table_process(self, table, position_=None, **kwargs):
-        index = len(self._processes_to_run) if position_ is None else position_
-        schema_name = table.database
-        if not schema_name:
-            return
-        self._processes_to_run.insert(index, ("dj_table", table, kwargs))
-        if schema_name not in self._pipeline_modules:
-            self._pipeline_modules[schema_name] = dj.create_virtual_module(
-                schema_name, schema_name
-            )
-
-    def add_function_process(self, callable, position_=None, **kwargs):
-        index = len(self._processes_to_run) if position_ is None else position_
-        self._processes_to_run.insert(index, ("function", callable, kwargs))
 
     def _run_once(self):
         for process_type, process, kwargs in self._processes_to_run:
