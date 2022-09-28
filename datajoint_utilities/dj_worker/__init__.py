@@ -241,8 +241,8 @@ class DataJointWorker:
         self.add_step(process, **kwargs)
 
     def add_step(self, callable, position_=None, **kwargs):
+        index = len(self._processes_to_run) if position_ is None else position_
         if is_djtable(callable):
-            index = len(self._processes_to_run) if position_ is None else position_
             schema_name = callable.database
             if not schema_name:
                 return
@@ -253,7 +253,6 @@ class DataJointWorker:
                 )
 
         elif inspect.isfunction(callable) or inspect.ismethod(callable):
-            index = len(self._processes_to_run) if position_ is None else position_
             self._processes_to_run.insert(index, ("function", callable, kwargs))
 
         else:
