@@ -25,6 +25,8 @@ import datajoint as dj
 import pymysql
 import pandas as pd
 
+logger = dj.logger
+
 _populate_settings = {
     "display_progress": True,
     "reserve_jobs": True,
