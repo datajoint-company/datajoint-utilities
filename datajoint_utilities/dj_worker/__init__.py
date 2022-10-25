@@ -39,6 +39,8 @@ def is_djparttable(obj) -> bool:
     return is_djtable(obj, Part)
 
 
+logger = dj.logger
+
 _populate_settings = {
     "display_progress": True,
     "reserve_jobs": True,
@@ -268,7 +270,14 @@ class DataJointWorker:
             if process_type == "dj_table":
                 process.populate(**{**_populate_settings, **kwargs})
             elif process_type == "function":
-                process(**kwargs)
+                try:
+                    process(**kwargs)
+                except Exception as e:
+                    if hasattr(e, "key") and isinstance(e.key, dict):
+                        key = e.key
+                    else:
+                        key = dict(error_time=datetime.utcnow())
+                    ErrorLog.log_exception(key, process.__name__, str(e))
 
         _clean_up(
             self._pipeline_modules.values(),
@@ -286,8 +295,10 @@ class DataJointWorker:
             or self._run_duration is None
             or self._run_duration < 0
         ):
-
-            self._run_once()
+            try:
+                self._run_once()
+            except Exception as e:
+                logger.error(str(e))
 
             time.sleep(self._sleep_duration)
 
