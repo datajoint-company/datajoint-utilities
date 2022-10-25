@@ -270,7 +270,14 @@ class DataJointWorker:
             if process_type == "dj_table":
                 process.populate(**{**_populate_settings, **kwargs})
             elif process_type == "function":
-                process(**kwargs)
+                try:
+                    process(**kwargs)
+                except Exception as e:
+                    if hasattr(e, "key") and isinstance(e.key, dict):
+                        key = e.key
+                    else:
+                        key = dict(error_time=datetime.utcnow())
+                    ErrorLog.log_exception(key, process.__name__, str(e))
 
         _clean_up(
             self._pipeline_modules.values(),
