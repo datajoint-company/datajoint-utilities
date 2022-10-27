@@ -291,7 +291,7 @@ class DataJointWorker:
             except Exception as e:
                 logger.error(str(e))
             else:
-                self._idled_cycle_count += bool(success_count)
+                self._idled_cycle_count += bool(not success_count)
             time.sleep(self._sleep_duration)
 
 
