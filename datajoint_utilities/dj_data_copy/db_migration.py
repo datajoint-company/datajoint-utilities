@@ -47,13 +47,6 @@ def migrate_schema(
 
     print(f"Data migration for schema: {origin_schema.schema.database}")
 
-    def get_table(schema_object, table_object_name):
-        if "." in tbl_name:
-            master_name, part_name = table_object_name.split(".")
-            return getattr(getattr(schema_object, master_name), part_name)
-        else:
-            return getattr(schema_object, table_object_name)
-
     for tbl_name in tbl_names:
         if (tbl_name in table_block_list) or ("." in tbl_name and tbl_name.split('.')[0] in table_block_list):
             continue
@@ -144,3 +137,18 @@ def migrate_table(orig_tbl, dest_tbl, restriction={}, force_fetch=True, batch_si
 
     print(f"{transferred_count}/{to_transfer_count} records")
     return transferred_count, to_transfer_count
+
+
+def get_table(pipeline_module, table_name):
+    """
+    Given a "pipeline_module" (e.g. from dj.VirtualModule) - return the DataJoint table with the name specified in "table_name" 
+
+    :param pipeline_module: pipeline module to retrieve the table from (e.g. from dj.VirtualModule)
+    :param table_name: name of the table (or part table), in PascalCase, e.g. `Session` or `Probe.Electrode`
+    """
+
+    if "." in tbl_name:
+        master_name, part_name = table_name.split(".")
+        return getattr(getattr(pipeline_module, master_name), part_name)
+    else:
+        return getattr(pipeline_module, table_name)
