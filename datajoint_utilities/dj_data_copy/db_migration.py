@@ -145,9 +145,10 @@ def get_table(pipeline_module, table_name):
 
     :param pipeline_module: pipeline module to retrieve the table from (e.g. from dj.VirtualModule)
     :param table_name: name of the table (or part table), in PascalCase, e.g. `Session` or `Probe.Electrode`
+    :return: DataJoint table from "pipeline_module" with "table_name"
     """
 
-    if "." in tbl_name:
+    if "." in table_name:
         master_name, part_name = table_name.split(".")
         return getattr(getattr(pipeline_module, master_name), part_name)
     else:
