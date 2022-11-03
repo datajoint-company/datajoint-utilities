@@ -31,9 +31,9 @@ class HubSpotTemplateEmailNotifier(Notifier):
         self,
         hubspot_api_key,
         email_template_id,
-        sender_name,
-        sender_email,
-        receiver_emails,
+        primary_recipient_email,
+        cc_list=(),
+        bcc_list=(),
     ):
         self.request_url = (
             "https://api.hubapi.com/marketing/v3/transactional/single-email/send"
@@ -45,13 +45,24 @@ class HubSpotTemplateEmailNotifier(Notifier):
         self.body = {
             "emailId": email_template_id,
             "message": {
-                "from": f"{sender_name} <{sender_email}>",
-                "to": receiver_emails[0],
-                "bcc": receiver_emails,
+                "to": primary_recipient_email,
+                "cc": cc_list,
+                "bcc": bcc_list,
             },
         }
 
     def notify(self, title, message, **kwargs):
+        if "_" in kwargs.get("schema_name", ""):
+            # assuming the "schema_name" has a certain namespace hierarchy - seperated by "_"
+            # retrieving the first and second level schema namespace
+            schema_namespaces = kwargs["schema_name"].split("_")
+            (
+                kwargs["schema_namespace_0"],
+                kwargs["schema_namespace_1"],
+            ) = schema_namespaces[:2]
+            if len(schema_namespaces) > 2:
+                kwargs["schema_name"] = "_".join(schema_namespaces[2:])
+
         body = {**self.body, "customProperties": {**kwargs, "status_message": message}}
         requests.post(
             self.request_url, headers=self.headers, data=json.dumps(body, default=str)
