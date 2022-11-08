@@ -13,17 +13,31 @@ propagate through the pipeline more horizontally or vertically.
 
 import argparse
 import inspect
+import json
 import logging
 import os
 import platform
-import time
-import json
 import re
+import time
 import traceback
 from datetime import datetime
 import datajoint as dj
 import pymysql
 import pandas as pd
+from datajoint.user_tables import Part, UserTable
+
+
+def is_djtable(obj, base_class=None) -> bool:
+    if base_class is None:
+        base_class = UserTable
+    return isinstance(obj, base_class) or (
+        inspect.isclass(obj) and issubclass(obj, base_class)
+    )
+
+
+def is_djparttable(obj) -> bool:
+    return is_djtable(obj, Part)
+
 
 logger = dj.logger
 
@@ -55,9 +69,9 @@ class WorkerLog(dj.Manual):
 
     @classmethod
     def log_process_job(cls, process, worker_name="", db_prefix=("",)):
-        if isinstance(process, dj.user_tables.TableMeta):
+        if is_djtable(process):
             schema_name, table_name = process.full_table_name.split(".")
-            schema_name = re.sub('|'.join(db_prefix), '', schema_name.strip("`"))
+            schema_name = re.sub("|".join(db_prefix), "", schema_name.strip("`"))
             table_name = dj.utils.to_camel_case(table_name.strip("`"))
             process_name = f"{schema_name}.{table_name}"
             user = process.connection.get_user()
@@ -142,24 +156,24 @@ class ErrorLog(dj.Manual):
     def log_error_job(cls, error_entry, schema_name, db_prefix=("",)):
         # if the exact same error has been logged, just update the error record
 
-        table_name = error_entry['table_name']
-        schema_name = re.sub('|'.join(db_prefix), '', schema_name.strip("`"))
+        table_name = error_entry["table_name"]
+        schema_name = re.sub("|".join(db_prefix), "", schema_name.strip("`"))
         table_name = dj.utils.to_camel_case(table_name.strip("`"))
         process_name = f"{schema_name}.{table_name}"
 
         entry = {
             "process": process_name,
-            "key_hash": error_entry['key_hash'],
-            "error_timestamp": error_entry['timestamp'],
-            "key": json.dumps(error_entry['key'], default=str),
-            "error_message": error_entry['error_message'],
-            "error_stack": error_entry['error_stack'],
-            "host": error_entry['host'],
-            "user": error_entry['user'],
-            "pid": error_entry['pid']
+            "key_hash": error_entry["key_hash"],
+            "error_timestamp": error_entry["timestamp"],
+            "key": json.dumps(error_entry["key"], default=str),
+            "error_message": error_entry["error_message"],
+            "error_stack": error_entry["error_stack"],
+            "host": error_entry["host"],
+            "user": error_entry["user"],
+            "pid": error_entry["pid"],
         }
 
-        if cls & {'process': entry['process'], 'key_hash': entry['key_hash']}:
+        if cls & {"process": entry["process"], "key_hash": entry["key_hash"]}:
             cls.update1(entry)
         else:
             cls.insert1(entry)
@@ -171,18 +185,18 @@ class ErrorLog(dj.Manual):
             msg=": " + str(error) if str(error) else "",
         )
         entry = {
-            'process': process.__name__,
-            'key_hash': dj.hash.key_hash(key),
-            'error_timestamp': datetime.utcnow(),
-            'key': json.dumps(key, default=str),
-            'error_message': error_message,
-            'error_stack': traceback.format_exc(),
-            'host': platform.node(),
-            'user': cls.connection.get_user(),
-            'pid': os.getpid()
+            "process": process.__name__,
+            "key_hash": dj.hash.key_hash(key),
+            "error_timestamp": datetime.utcnow(),
+            "key": json.dumps(key, default=str),
+            "error_message": error_message,
+            "error_stack": traceback.format_exc(),
+            "host": platform.node(),
+            "user": cls.connection.get_user(),
+            "pid": os.getpid(),
         }
 
-        if cls & {'process': entry['process'], 'key_hash': entry['key_hash']}:
+        if cls & {"process": entry["process"], "key_hash": entry["key_hash"]}:
             cls.update1(entry)
         else:
             cls.insert1(entry)
@@ -236,18 +250,26 @@ class DataJointWorker:
         self._run_start_time = None
 
     def __call__(self, process, **kwargs):
-        if isinstance(process, dj.user_tables.TableMeta):
-            self._processes_to_run.append(("dj_table", process, kwargs))
-            schema_name = process.full_table_name.split(".")[0].replace("`", "")
+        self.add_step(process, **kwargs)
+
+    def add_step(self, callable, position_=None, **kwargs):
+        index = len(self._processes_to_run) if position_ is None else position_
+        if is_djtable(callable):
+            schema_name = callable.database
+            if not schema_name:
+                return
+            self._processes_to_run.insert(index, ("dj_table", callable, kwargs))
             if schema_name not in self._pipeline_modules:
                 self._pipeline_modules[schema_name] = dj.create_virtual_module(
                     schema_name, schema_name
                 )
-        elif inspect.isfunction(process) or inspect.ismethod(process):
-            self._processes_to_run.append(("function", process, kwargs))
+
+        elif inspect.isfunction(callable) or inspect.ismethod(callable):
+            self._processes_to_run.insert(index, ("function", callable, kwargs))
+
         else:
             raise NotImplemented(
-                f"Unable to handle processing step of type {type(process)}"
+                f"Unable to handle processing step of type {type(callable)}"
             )
 
     def _run_once(self):
@@ -261,12 +283,19 @@ class DataJointWorker:
                 if 'return_success_count' in _populate_settings:
                     success_count += status[0]
             elif process_type == "function":
-                process(**kwargs)
+                try:
+                    process(**kwargs)
+                except Exception as e:
+                    if hasattr(e, "key") and isinstance(e.key, dict):
+                        key = e.key
+                    else:
+                        key = dict(error_time=datetime.utcnow())
+                    ErrorLog.log_exception(key, process.__name__, str(e))
 
         _clean_up(
             self._pipeline_modules.values(),
             additional_error_patterns=self._autoclear_error_patterns,
-            db_prefix=self._db_prefix
+            db_prefix=self._db_prefix,
         )
 
         WorkerLog.delete_old_logs()
@@ -314,37 +343,43 @@ def _clean_up(pipeline_modules, additional_error_patterns=[], db_prefix=""):
     for pipeline_module in pipeline_modules:
         # clear generic error jobs
         (
-                pipeline_module.schema.jobs
-                & 'status = "error"'
-                & [
-                    f'error_message LIKE "{e}"'
-                    for e in _generic_errors
-                ]
+            pipeline_module.schema.jobs
+            & 'status = "error"'
+            & [f'error_message LIKE "{e}"' for e in _generic_errors]
         ).delete()
         # clear additional error patterns
         additional_error_query = (
-                pipeline_module.schema.jobs
-                & 'status = "error"'
-                & [
-                    f'error_message LIKE "{e}"'
-                    for e in additional_error_patterns
-                ]
+            pipeline_module.schema.jobs
+            & 'status = "error"'
+            & [f'error_message LIKE "{e}"' for e in additional_error_patterns]
         )
 
         with pipeline_module.schema.jobs.connection.transaction:
             for error_entry in additional_error_query.fetch(as_dict=True):
-                ErrorLog.log_error_job(error_entry, schema_name=pipeline_module.schema.database, db_prefix=db_prefix)
+                ErrorLog.log_error_job(
+                    error_entry,
+                    schema_name=pipeline_module.schema.database,
+                    db_prefix=db_prefix,
+                )
             additional_error_query.delete()
 
         # clear stale "reserved" jobs
-        current_connections = [v[0] for v in dj.conn().query(
-            'SELECT id FROM information_schema.processlist WHERE id <> CONNECTION_ID() ORDER BY id')]
+        current_connections = [
+            v[0]
+            for v in dj.conn().query(
+                "SELECT id FROM information_schema.processlist WHERE id <> CONNECTION_ID() ORDER BY id"
+            )
+        ]
         if current_connections:
-            current_connections = f'({", ".join([str(c) for c in current_connections])})'
-            stale_jobs = (pipeline_module.schema.jobs
-                          & 'status = "reserved"'
-                          & f'connection_id NOT IN {current_connections}')
-            (pipeline_module.schema.jobs & stale_jobs.fetch('KEY')).delete()
+            current_connections = (
+                f'({", ".join([str(c) for c in current_connections])})'
+            )
+            stale_jobs = (
+                pipeline_module.schema.jobs
+                & 'status = "reserved"'
+                & f"connection_id NOT IN {current_connections}"
+            )
+            (pipeline_module.schema.jobs & stale_jobs.fetch("KEY")).delete()
 
 
 def get_workflow_progress(db_prefixes):
