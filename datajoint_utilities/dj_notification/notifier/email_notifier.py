@@ -23,7 +23,8 @@ class MailgunEmailNotifier(Notifier):
 
     def notify(self, title, message, **kwargs):
         body = {**self.body, "subject": title, "text": message}
-        requests.post(self.request_url, auth=self.auth, data=body)
+        response = requests.post(self.request_url, auth=self.auth, data=body)
+        return response
 
 
 class HubSpotTemplateEmailNotifier(Notifier):
@@ -64,6 +65,7 @@ class HubSpotTemplateEmailNotifier(Notifier):
                 kwargs["schema_name"] = "_".join(schema_namespaces[2:])
 
         body = {**self.body, "customProperties": {**kwargs, "status_message": message}}
-        requests.post(
+        response = requests.post(
             self.request_url, headers=self.headers, data=json.dumps(body, default=str)
         )
+        return response
