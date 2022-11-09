@@ -277,7 +277,7 @@ class DataJointWorker:
                         key = e.key
                     else:
                         key = dict(error_time=datetime.utcnow())
-                    ErrorLog.log_exception(key, process.__name__, str(e))
+                    ErrorLog.log_exception(key, process, str(e))
 
         _clean_up(
             self._pipeline_modules.values(),
