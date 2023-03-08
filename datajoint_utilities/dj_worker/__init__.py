@@ -77,7 +77,7 @@ class WorkerLog(dj.Manual):
             user = process.connection.get_user()
         elif inspect.isfunction(process) or inspect.ismethod(process):
             process_name = process.__name__
-            user = ""
+            user = dj.conn().get_user()
         else:
             raise ValueError(
                 "Input process must be either a DataJoint table or a function"
