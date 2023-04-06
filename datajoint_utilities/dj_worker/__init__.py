@@ -49,8 +49,8 @@ _populate_settings = {
 
 logger = dj.logger
 
-if dj.__version__ > '0.13.7':
-    _populate_settings['return_success_count'] = True
+if dj.__version__ > "0.13.7":
+    _populate_settings["return_success_count"] = True
 
 
 class WorkerLog(dj.Manual):
@@ -103,10 +103,10 @@ class WorkerLog(dj.Manual):
     @classmethod
     def get_recent_jobs(cls, backtrack_minutes=60):
         recent = (
-                cls.proj(
-                    minute_elapsed="TIMESTAMPDIFF(MINUTE, process_timestamp, UTC_TIMESTAMP())"
-                )
-                & f"minute_elapsed < {backtrack_minutes}"
+            cls.proj(
+                minute_elapsed="TIMESTAMPDIFF(MINUTE, process_timestamp, UTC_TIMESTAMP())"
+            )
+            & f"minute_elapsed < {backtrack_minutes}"
         )
 
         recent_jobs = dj.U("process").aggr(
@@ -122,10 +122,10 @@ class WorkerLog(dj.Manual):
     def delete_old_logs(cls, cutoff_days=30):
         # if latest log is older than cutoff_days, then do nothing
         old_jobs = (
-                cls.proj(
-                    elapsed_days=f'TIMESTAMPDIFF(DAY, process_timestamp, "{datetime.utcnow()}")'
-                )
-                & f"elapsed_days > {cutoff_days}"
+            cls.proj(
+                elapsed_days=f'TIMESTAMPDIFF(DAY, process_timestamp, "{datetime.utcnow()}")'
+            )
+            & f"elapsed_days > {cutoff_days}"
         )
         if old_jobs:
             with dj.config(safemode=False):
@@ -204,10 +204,10 @@ class ErrorLog(dj.Manual):
     @classmethod
     def delete_old_logs(cls, cutoff_days=30):
         old_jobs = (
-                cls.proj(
-                    elapsed_days=f'TIMESTAMPDIFF(DAY, error_timestamp, "{datetime.utcnow()}")'
-                )
-                & f"elapsed_days > {cutoff_days}"
+            cls.proj(
+                elapsed_days=f'TIMESTAMPDIFF(DAY, error_timestamp, "{datetime.utcnow()}")'
+            )
+            & f"elapsed_days > {cutoff_days}"
         )
         if old_jobs:
             with dj.config(safemode=False):
@@ -223,15 +223,15 @@ class DataJointWorker:
     """
 
     def __init__(
-            self,
-            worker_name,
-            worker_schema_name,
-            *,
-            run_duration=-1,
-            sleep_duration=60,
-            max_idled_cycle=-1,
-            autoclear_error_patterns=[],
-            db_prefix=[""],
+        self,
+        worker_name,
+        worker_schema_name,
+        *,
+        run_duration=-1,
+        sleep_duration=60,
+        max_idled_cycle=-1,
+        autoclear_error_patterns=[],
+        db_prefix=[""],
     ):
         self.name = worker_name
         self._worker_schema = dj.schema(worker_schema_name)
@@ -241,7 +241,9 @@ class DataJointWorker:
         self._autoclear_error_patterns = autoclear_error_patterns
         self._run_duration = run_duration if run_duration is not None else -1
         self._sleep_duration = sleep_duration
-        self._max_idled_cycle = max_idled_cycle if 'return_success_count' in _populate_settings else -1
+        self._max_idled_cycle = (
+            max_idled_cycle if "return_success_count" in _populate_settings else -1
+        )
         self._db_prefix = [db_prefix] if isinstance(db_prefix, str) else db_prefix
 
         self._processes_to_run = []
@@ -273,14 +275,14 @@ class DataJointWorker:
             )
 
     def _run_once(self):
-        success_count = 0 if 'return_success_count' in _populate_settings else 1
+        success_count = 0 if "return_success_count" in _populate_settings else 1
         for process_type, process, kwargs in self._processes_to_run:
             WorkerLog.log_process_job(
                 process, worker_name=self.name, db_prefix=self._db_prefix
             )
             if process_type == "dj_table":
                 status = process.populate(**{**_populate_settings, **kwargs})
-                if 'return_success_count' in _populate_settings:
+                if "return_success_count" in _populate_settings:
                     success_count += status[0]
             elif process_type == "function":
                 try:
@@ -305,13 +307,14 @@ class DataJointWorker:
 
     def _keep_running(self):
         exceed_run_duration = not (
-                time.time() - self._run_start_time < self._run_duration
-                or self._run_duration < 0
+            time.time() - self._run_start_time < self._run_duration
+            or self._run_duration < 0
         )
         exceed_max_idled_cycle = 0 < self._max_idled_cycle < self._idled_cycle_count
         return not (exceed_run_duration or exceed_max_idled_cycle)
 
     def run(self):
+        logger.info(f"Starting DataJoint Worker: {self.name}")
         self._run_start_time = time.time()
         self._idled_cycle_count = 0
         while self._keep_running():
@@ -322,6 +325,7 @@ class DataJointWorker:
             else:
                 self._idled_cycle_count += bool(not success_count)
             time.sleep(self._sleep_duration)
+        logger.info(f"Stopping DataJoint Worker: {self.name}")
 
 
 def _clean_up(pipeline_modules, additional_error_patterns=[], db_prefix=""):
@@ -399,25 +403,36 @@ def get_workflow_progress(db_prefixes):
 
     (Note: not topologically sorted)
     """
-    pipeline_modules = {n: dj.create_virtual_module(n, n) for n in dj.list_schemas() if
-                        re.match('|'.join(db_prefixes), n)}
+    pipeline_modules = {
+        n: dj.create_virtual_module(n, n)
+        for n in dj.list_schemas()
+        if re.match("|".join(db_prefixes), n)
+    }
 
-    if hasattr(list(pipeline_modules.values())[0].schema, 'progress'):
+    if hasattr(list(pipeline_modules.values())[0].schema, "progress"):
         workflow_status = []
         for pipeline_module in pipeline_modules.values():
             progress = pipeline_module.schema.progress()
             progress.index = progress.index.map(
-                lambda x: f'{pipeline_module.schema.database}.{x}')
+                lambda x: f"{pipeline_module.schema.database}.{x}"
+            )
             workflow_status.append(progress)
         workflow_status = pd.concat(workflow_status)
     else:
-        job_status_df = {'reserved': [], 'error': [], 'ignore': []}
+        job_status_df = {"reserved": [], "error": [], "ignore": []}
         for pipeline_module in pipeline_modules.values():
-            for job_status in ('reserved', 'error', 'ignore'):
-                status_df = dj.U('table_name').aggr(pipeline_module.schema.jobs & f'status = "{job_status}"',
-                                                    **{job_status: 'count(table_name)'}).fetch(format='frame')
+            for job_status in ("reserved", "error", "ignore"):
+                status_df = (
+                    dj.U("table_name")
+                    .aggr(
+                        pipeline_module.schema.jobs & f'status = "{job_status}"',
+                        **{job_status: "count(table_name)"},
+                    )
+                    .fetch(format="frame")
+                )
                 status_df.index = status_df.index.map(
-                    lambda x: f'{pipeline_module.schema.database}.{x}')
+                    lambda x: f"{pipeline_module.schema.database}.{x}"
+                )
                 job_status_df[job_status].append(status_df)
 
         for k, v in job_status_df.items():
@@ -427,37 +442,48 @@ def get_workflow_progress(db_prefixes):
         for pipeline_module in pipeline_modules.values():
             pipeline_module.schema.spawn_missing_classes(context=process_tables)
 
-        process_tables = {process.full_table_name.replace('`', ''): process
-                          for process in process_tables.values() if process.table_name.startswith('_')}
+        process_tables = {
+            process.full_table_name.replace("`", ""): process
+            for process in process_tables.values()
+            if process.table_name.startswith("_")
+        }
 
-        workflow_status = pd.DataFrame(list(process_tables), columns=['table_name'])
-        workflow_status.set_index('table_name', inplace=True)
+        workflow_status = pd.DataFrame(list(process_tables), columns=["table_name"])
+        workflow_status.set_index("table_name", inplace=True)
 
-        workflow_status['total'] = [len(process_tables[t].key_source)
-                                    for t in workflow_status.index]
-        workflow_status['in_queue'] = [len(process_tables[t].key_source
-                                           - process_tables[t].proj())
-                                       for t in workflow_status.index]
+        workflow_status["total"] = [
+            len(process_tables[t].key_source) for t in workflow_status.index
+        ]
+        workflow_status["in_queue"] = [
+            len(process_tables[t].key_source - process_tables[t].proj())
+            for t in workflow_status.index
+        ]
 
-        workflow_status = workflow_status.join(job_status_df['reserved'].join(
-            job_status_df['error'], how='outer').join(
-            job_status_df['ignore'], how='outer'), how='left')
+        workflow_status = workflow_status.join(
+            job_status_df["reserved"]
+            .join(job_status_df["error"], how="outer")
+            .join(job_status_df["ignore"], how="outer"),
+            how="left",
+        )
 
         workflow_status.fillna(0, inplace=True)
 
-        workflow_status[
-            'remaining'] = workflow_status.in_queue - workflow_status.reserved - workflow_status.error - workflow_status.ignore
+        workflow_status["remaining"] = (
+            workflow_status.in_queue
+            - workflow_status.reserved
+            - workflow_status.error
+            - workflow_status.ignore
+        )
 
     def _format_table_name(full_table_name):
-        schema_name, table_name = full_table_name.split('.')
-        schema_name = re.sub('|'.join(db_prefixes), '', schema_name)
+        schema_name, table_name = full_table_name.split(".")
+        schema_name = re.sub("|".join(db_prefixes), "", schema_name)
         table_name = dj.utils.to_camel_case(table_name)
-        return f'{schema_name}.{table_name}'
+        return f"{schema_name}.{table_name}"
 
     workflow_status.index = workflow_status.index.map(_format_table_name)
 
     return workflow_status
-
 
 
 # arg-parser for usage as CLI
