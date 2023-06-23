@@ -26,6 +26,8 @@ import pymysql
 import pandas as pd
 from datajoint.user_tables import Part, UserTable
 
+from .. import dict_to_uuid
+
 
 def is_djtable(obj, base_class=None) -> bool:
     if base_class is None:
@@ -53,6 +55,30 @@ if dj.__version__ > "0.13.7":
     _populate_settings["return_success_count"] = True
 
 
+class RegisteredWorker(dj.Manual):
+    definition = """
+    worker_name: varchar(64)
+    ---
+    registration_time: datetime(6) # registration datetime (UTC)
+    worker_kwargs: longblob  # keyword arguments to instantiate a DataJointWorker class
+    worker_config_uuid: uuid
+    unique index (worker_name, worker_config_uuid)
+    """
+
+    class Process(dj.Part):
+        definition = """
+        -> master
+        process: varchar(64)
+        ---
+        process_index: int  # running order for this process from this worker
+        process_config_uuid: UUID # hash of the key_source
+        full_table_name='': varchar(255)  # full table name if this process is a DJ table
+        key_source=null  :longblob  # sql statement for the key_source of the table - from make_sql()
+        process_kwargs: longblob  # keyword arguments to pass when calling the process
+        unique index (worker_name, process, process_config_uuid)
+        """
+
+
 class WorkerLog(dj.Manual):
     definition = """
     # Registration of processing jobs running .populate() jobs or custom function
@@ -69,19 +95,7 @@ class WorkerLog(dj.Manual):
 
     @classmethod
     def log_process_job(cls, process, worker_name="", db_prefix=("",)):
-        if is_djtable(process):
-            schema_name, table_name = process.full_table_name.split(".")
-            schema_name = re.sub("|".join(db_prefix), "", schema_name.strip("`"))
-            table_name = dj.utils.to_camel_case(table_name.strip("`"))
-            process_name = f"{schema_name}.{table_name}"
-            user = process.connection.get_user()
-        elif inspect.isfunction(process) or inspect.ismethod(process):
-            process_name = process.__name__
-            user = dj.conn().get_user()
-        else:
-            raise ValueError(
-                "Input process must be either a DataJoint table or a function"
-            )
+        process_name, user = get_process_name(db_prefix, process)
 
         if not worker_name:
             frame = inspect.currentframe()
@@ -235,6 +249,7 @@ class DataJointWorker:
     ):
         self.name = worker_name
         self._worker_schema = dj.schema(worker_schema_name)
+        self._worker_schema(RegisteredWorker)
         self._worker_schema(WorkerLog)
         self._worker_schema(ErrorLog)
 
@@ -255,6 +270,9 @@ class DataJointWorker:
         self.add_step(process, **kwargs)
 
     def add_step(self, callable, position_=None, **kwargs):
+        """
+        Add a new process to the list of processes to be executed by this worker
+        """
         index = len(self._processes_to_run) if position_ is None else position_
         if is_djtable(callable):
             schema_name = callable.database
@@ -274,7 +292,53 @@ class DataJointWorker:
                 f"Unable to handle processing step of type {type(callable)}"
             )
 
+    def register_worker(self):
+        """
+        Register the worker and its associated processes into the RegisteredWorker table
+        """
+        process_entries = []
+        for index, (process_type, process, kwargs) in enumerate(self._processes_to_run):
+            entry = {
+                "worker_name": self.name,
+                "process": get_process_name(process, self._db_prefix),
+                "process_index": index,
+                "full_table_name": process.full_table_name
+                if is_djtable(process)
+                else "",
+                "key_source": process.key_source.proj().make_sql()
+                if is_djtable(process)
+                else None,
+                "process_kwargs": kwargs,
+            }
+            entry["process_config_uuid"] = dict_to_uuid(entry)
+            process_entries.append(entry)
+
+        worker_config_uuid = dict_to_uuid(
+            {e["process_index"]: e["process_config_uuid"] for e in process_entries}
+        )
+        if RegisteredWorker & {
+            "worker_name": self.name,
+            "worker_config_uuid": worker_config_uuid,
+        }:
+            return
+
+        worker_entry = {
+            "worker_name": self.name,
+            "registration_time": datetime.utcnow(),
+            "worker_kwargs": None,
+            "worker_config_uuid": worker_config_uuid,
+        }
+        with RegisteredWorker.connection.transaction:
+            with dj.config(safemode=False):
+                (RegisteredWorker & {"worker_name": self.name}).delete()
+            RegisteredWorker.insert1(worker_entry)
+            RegisteredWorker.Process.insert(process_entries)
+        logger.info(f"Worker registered: {self.name}")
+
     def _run_once(self):
+        """
+        Run all processes in order, once
+        """
         success_count = 0 if "return_success_count" in _populate_settings else 1
         for process_type, process, kwargs in self._processes_to_run:
             WorkerLog.log_process_job(
@@ -306,6 +370,9 @@ class DataJointWorker:
         return success_count
 
     def _keep_running(self):
+        """
+        Determine whether or not to keep running all the processes again and again
+        """
         exceed_run_duration = not (
             time.time() - self._run_start_time < self._run_duration
             or self._run_duration < 0
@@ -314,6 +381,9 @@ class DataJointWorker:
         return not (exceed_run_duration or exceed_max_idled_cycle)
 
     def run(self):
+        """
+        Run all processes in a continual loop until the terminating condition is met (see "_keep_running()")
+        """
         logger.info(f"Starting DataJoint Worker: {self.name}")
         self._run_start_time = time.time()
         self._idled_cycle_count = 0
@@ -384,6 +454,21 @@ def _clean_up(pipeline_modules, additional_error_patterns=[], db_prefix=""):
                 & f"connection_id NOT IN {current_connections}"
             )
             (pipeline_module.schema.jobs & stale_jobs.fetch("KEY")).delete()
+
+
+def get_process_name(process, db_prefix):
+    if is_djtable(process):
+        schema_name, table_name = process.full_table_name.split(".")
+        schema_name = re.sub("|".join(db_prefix), "", schema_name.strip("`"))
+        table_name = dj.utils.to_camel_case(table_name.strip("`"))
+        process_name = f"{schema_name}.{table_name}"
+        user = process.connection.get_user()
+    elif inspect.isfunction(process) or inspect.ismethod(process):
+        process_name = process.__name__
+        user = dj.conn().get_user()
+    else:
+        raise ValueError("Input process must be either a DataJoint table or a function")
+    return process_name, user
 
 
 def get_workflow_progress(db_prefixes):
