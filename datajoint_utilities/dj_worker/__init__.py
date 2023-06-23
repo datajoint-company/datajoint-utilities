@@ -73,7 +73,7 @@ class RegisteredWorker(dj.Manual):
         process_index: int  # running order for this process from this worker
         process_config_uuid: UUID # hash of the key_source
         full_table_name='': varchar(255)  # full table name if this process is a DJ table
-        key_source=null  :longblob  # sql statement for the key_source of the table - from make_sql()
+        key_source_sql=null  :longblob  # sql statement for the key_source of the table - from make_sql()
         process_kwargs: longblob  # keyword arguments to pass when calling the process
         unique index (worker_name, process, process_config_uuid)
         """
@@ -95,7 +95,8 @@ class WorkerLog(dj.Manual):
 
     @classmethod
     def log_process_job(cls, process, worker_name="", db_prefix=("",)):
-        process_name, user = get_process_name(db_prefix, process)
+        process_name = get_process_name(db_prefix, process)
+        user = dj.conn().get_user()
 
         if not worker_name:
             frame = inspect.currentframe()
@@ -305,7 +306,7 @@ class DataJointWorker:
                 "full_table_name": process.full_table_name
                 if is_djtable(process)
                 else "",
-                "key_source": process.key_source.proj().make_sql()
+                "key_source_sql": process.key_source.proj().make_sql()
                 if is_djtable(process)
                 else None,
                 "process_kwargs": kwargs,
@@ -325,9 +326,18 @@ class DataJointWorker:
         worker_entry = {
             "worker_name": self.name,
             "registration_time": datetime.utcnow(),
-            "worker_kwargs": None,
+            "worker_kwargs": {
+                "worker_name": self.name,
+                "worker_schema_name": self._worker_schema.database,
+                "run_duration": self._run_duration,
+                "sleep_duration": self._sleep_duration,
+                "max_idled_cycle": self._max_idled_cycle,
+                "autoclear_error_patterns": self._autoclear_error_patterns,
+                "db_prefix": self._db_prefix,
+            },
             "worker_config_uuid": worker_config_uuid,
         }
+
         with RegisteredWorker.connection.transaction:
             with dj.config(safemode=False):
                 (RegisteredWorker & {"worker_name": self.name}).delete()
@@ -462,13 +472,11 @@ def get_process_name(process, db_prefix):
         schema_name = re.sub("|".join(db_prefix), "", schema_name.strip("`"))
         table_name = dj.utils.to_camel_case(table_name.strip("`"))
         process_name = f"{schema_name}.{table_name}"
-        user = process.connection.get_user()
     elif inspect.isfunction(process) or inspect.ismethod(process):
         process_name = process.__name__
-        user = dj.conn().get_user()
     else:
         raise ValueError("Input process must be either a DataJoint table or a function")
-    return process_name, user
+    return process_name
 
 
 def get_workflow_progress(db_prefixes):
