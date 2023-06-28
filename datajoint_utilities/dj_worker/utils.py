@@ -113,15 +113,15 @@ def _get_workflow_progress(db_prefixes, exclude_tables=()):
     return workflow_status
 
 
-def get_workflow_operation_overview(workerlog_schema_name, db_prefixes=None):
+def get_workflow_operation_overview(worker_schema_name, db_prefixes=None):
     try:
-        workerlog_vm = dj.create_virtual_module("worker_vm", workerlog_schema_name)
+        workerlog_vm = dj.create_virtual_module("worker_vm", worker_schema_name)
     except dj.errors.DataJointError:
         return pd.DataFrame()
 
     # -- New method to retrieve workflow_operation_overview more accurately, accounting for modified key_source
     if hasattr(workerlog_vm, RegisteredWorker.__name__):
-        _schema = dj.schema(workerlog_schema_name)
+        _schema = dj.schema(worker_schema_name)
         _schema(RegisteredWorker)
         # confirm workers' processes overlap with the specified db_prefixes
         is_valid_db_prefixes = db_prefixes is None or set(
