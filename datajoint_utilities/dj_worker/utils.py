@@ -140,6 +140,8 @@ def get_workflow_operation_overview(workerlog_schema_name, db_prefixes=None):
         )
 
     # -- Old method to retrieve workflow_operation_overview - modified key_source unaccounted for
+    if db_prefixes is None:
+        raise ValueError(f"db_prefixes must be specified")
 
     # workflow_progress
     workflow_progress = _get_workflow_progress(db_prefixes)
