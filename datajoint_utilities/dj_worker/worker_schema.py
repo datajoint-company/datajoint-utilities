@@ -26,36 +26,43 @@ class RegisteredWorker(dj.Manual):
     class Process(dj.Part):
         definition = """
         -> master
-        process: varchar(64)
-        ---
         process_index: int  # running order for this process from this worker
-        process_config_uuid: UUID # hash of the key_source
+        ---
+        process: varchar(64)
         full_table_name='': varchar(255)  # full table name if this process is a DJ table
         key_source_sql=null  :longblob  # sql statement for the key_source of the table - from make_sql()
         process_kwargs: longblob  # keyword arguments to pass when calling the process
-        unique index (worker_name, process, process_config_uuid)
+        process_config_uuid: UUID # hash of all attributes defining this process
         """
 
     @classmethod
     def get_workers_progress(cls):
         """
-        Return the operation progress for all registered workers (jobs status for each process)
+        Return the operation progress for all registered workers (jobs status for each AutoPopulate process)
         :return: pandas DataFrame of workers jobs status
         """
         workflow_status = (
-            cls.Process.proj(
-                "full_table_name", "key_source_sql", total="NULL", in_queue="NULL"
+            (cls.Process & "key_source_sql is not NULL")
+            .proj(
+                "process",
+                "key_source_sql",
+                table_name="full_table_name",
+                total="NULL",
+                in_queue="NULL",
             )
             .fetch(format="frame")
             .reset_index()
         )
+        workflow_status.drop_duplicates(subset=["worker_name", "process"], inplace=True)
 
+        # extract jobs status
         schema_names = set(
-            [n.split(".")[0].strip("`") for n in workflow_status.full_table_name if n]
+            [n.split(".")[0].strip("`") for n in workflow_status.table_name if n]
         )
-        pipeline_schemas = {n: dj.Schema(n) for n in schema_names}
-        if not pipeline_schemas:
-            return pd.DataFrame()
+        pipeline_schemas = {
+            n: dj.Schema(n, create_schema=False, create_tables=False)
+            for n in schema_names
+        }
 
         job_status_df = {"reserved": [], "error": [], "ignore": []}
         for pipeline_schema in pipeline_schemas.values():
@@ -76,12 +83,18 @@ class RegisteredWorker(dj.Manual):
         for k, v in job_status_df.items():
             job_status_df[k] = pd.concat(v)
 
-        _total, _in_queue = [], []
-        for _, r in workflow_status.iterrows():
-            if not r.full_table_name:
+        # extract AutoPopulate key_source status
+        for r_idx, r in workflow_status.iterrows():
+            if not r.key_source_sql:
                 continue
-            target = dj.FreeTable(full_table_name=r.full_table_name, conn=dj.conn())
-            r.total, r.in_queue = cls._get_key_source_count(r.key_source_sql, target)
+            (
+                workflow_status.loc[r_idx, "total"],
+                workflow_status.loc[r_idx, "in_queue"],
+            ) = cls._get_key_source_count(r.key_source_sql, r.table_name)
+
+        # merge key_source and jobs status
+        workflow_status.set_index("table_name", inplace=True)
+        workflow_status.index = workflow_status.index.map(lambda x: x.replace("`", ""))
 
         workflow_status = workflow_status.join(
             job_status_df["reserved"]
@@ -100,13 +113,12 @@ class RegisteredWorker(dj.Manual):
             - workflow_status.ignore
         )
 
-        workflow_status.drop(
-            columns=["full_table_name", "key_source_sql"], inplace=True
-        )
+        workflow_status.set_index("process", inplace=True)
+        workflow_status.drop(columns=["process_index", "key_source_sql"], inplace=True)
         return workflow_status
 
     @classmethod
-    def _get_key_source_count(cls, key_source_sql, target):
+    def _get_key_source_count(cls, key_source_sql, target_full_table_name):
         def _rename_attributes(table, props):
             return (
                 table.proj(
@@ -120,17 +132,21 @@ class RegisteredWorker(dj.Manual):
                 else table.proj()
             )
 
+        target = dj.FreeTable(full_table_name=target_full_table_name, conn=dj.conn())
+
         parents = target.parents(primary=True, as_objects=True, foreign_key_info=True)
 
-        ks_tbl = _rename_attributes(*parents[0])
+        ks_parents = _rename_attributes(*parents[0])
         for q in parents[1:]:
-            ks_tbl *= _rename_attributes(*q)
+            ks_parents *= _rename_attributes(*q)
 
-        total = len(dj.conn().query(key_source_sql).fetchall())
+        ks_attrs_sql = ks_parents.heading.as_sql(ks_parents.heading.primary_key)
         in_queue_sql = (
             key_source_sql
-            + f"{'AND' if 'WHERE' in key_source_sql else 'WHERE'}(({ks_tbl.heading.as_sql(ks_tbl.heading.primary_key)}) not in ({ks_tbl.proj().make_sql()}))"
+            + f"{'AND' if 'WHERE' in key_source_sql else ' WHERE '}(({ks_attrs_sql}) not in (SELECT {ks_attrs_sql} FROM {target.full_table_name}))"
         )
+
+        total = len(dj.conn().query(key_source_sql).fetchall())
         in_queue = len(dj.conn().query(in_queue_sql).fetchall())
         return total, in_queue
 

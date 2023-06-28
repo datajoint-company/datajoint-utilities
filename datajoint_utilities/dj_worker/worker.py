@@ -83,6 +83,9 @@ class DataJointWorker:
         """
         index = len(self._processes_to_run) if position_ is None else position_
         if is_djtable(callable):
+            assert is_djtable(
+                callable, dj.user_tables.AutoPopulate
+            ), f"Table '{callable.__name__}' is not of type AutoPopulate table - unable to add to worker"
             schema_name = callable.database
             if not schema_name:
                 return
