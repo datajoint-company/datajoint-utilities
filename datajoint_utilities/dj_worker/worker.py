@@ -201,6 +201,8 @@ class DataJointWorker:
         """
         Run all processes in a continual loop until the terminating condition is met (see "_keep_running()")
         """
+        self.register_worker()
+
         logger.info(f"Starting DataJoint Worker: {self.name}")
         self._run_start_time = time.time()
         self._idled_cycle_count = 0
