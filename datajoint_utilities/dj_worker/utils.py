@@ -113,7 +113,7 @@ def _get_workflow_progress(db_prefixes, exclude_tables=()):
     return workflow_status
 
 
-def get_workflow_operation_overview(worker_schema_name, db_prefixes=None):
+def get_workflow_operation_overview(worker_schema_name, db_prefixes=None, exclude_tables=()):
     try:
         workerlog_vm = dj.create_virtual_module("worker_vm", worker_schema_name)
     except dj.errors.DataJointError:
@@ -144,7 +144,7 @@ def get_workflow_operation_overview(worker_schema_name, db_prefixes=None):
         raise ValueError(f"db_prefixes must be specified")
 
     # workflow_progress
-    workflow_progress = _get_workflow_progress(db_prefixes)
+    workflow_progress = _get_workflow_progress(db_prefixes, exclude_tables=exclude_tables)
     if workflow_progress.empty:
         return pd.DataFrame()
     # workers
