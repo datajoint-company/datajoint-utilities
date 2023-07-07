@@ -1,3 +1,4 @@
+import os
 import datajoint as dj
 import pandas as pd
 import numpy as np
@@ -5,6 +6,8 @@ import re
 
 from .worker_schema import RegisteredWorker
 
+
+os.environ["DJ_SUPPORT_FILEPATH_MANAGEMENT"] = "TRUE"
 logger = dj.logger
 
 
