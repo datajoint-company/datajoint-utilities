@@ -167,7 +167,7 @@ class WorkerLog(dj.Manual):
 
     @classmethod
     def log_process_job(cls, process, worker_name="", db_prefix=("",)):
-        process_name = get_process_name(db_prefix, process)
+        process_name = get_process_name(process, db_prefix)
         user = dj.conn().get_user()
 
         if not worker_name:
