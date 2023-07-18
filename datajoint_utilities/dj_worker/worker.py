@@ -11,11 +11,9 @@ a time for every iteration of the loop, instead of all jobs. This allows for the
 propagate through the pipeline more horizontally or vertically.
 """
 import inspect
-import re
 import time
 from datetime import datetime
 import datajoint as dj
-import pandas as pd
 
 from .. import dict_to_uuid
 from .worker_schema import (
@@ -73,6 +71,7 @@ class DataJointWorker:
         self._pipeline_modules = {}
         self._idled_cycle_count = None
         self._run_start_time = None
+        self._is_registered = False
 
     def __call__(self, process, **kwargs):
         self.add_step(process, **kwargs)
@@ -94,19 +93,21 @@ class DataJointWorker:
                 self._pipeline_modules[schema_name] = dj.create_virtual_module(
                     schema_name, schema_name
                 )
-
         elif inspect.isfunction(callable) or inspect.ismethod(callable):
             self._processes_to_run.insert(index, ("function", callable, kwargs))
-
         else:
             raise NotImplemented(
                 f"Unable to handle processing step of type {type(callable)}"
             )
+        self._is_registered = False
 
     def register_worker(self):
         """
         Register the worker and its associated processes into the RegisteredWorker table
         """
+        if self._is_registered:
+            return
+
         process_entries = []
         for index, (process_type, process, kwargs) in enumerate(self._processes_to_run):
             entry = {
@@ -153,6 +154,8 @@ class DataJointWorker:
                 (RegisteredWorker & {"worker_name": self.name}).delete()
             RegisteredWorker.insert1(worker_entry)
             RegisteredWorker.Process.insert(process_entries)
+
+        self._is_registered = True
         logger.info(f"Worker registered: {self.name}")
 
     def _run_once(self):
@@ -276,3 +279,29 @@ def _clean_up(pipeline_modules, additional_error_patterns=[], db_prefix=""):
                 & f"connection_id NOT IN {current_connections}"
             )
             (pipeline_module.schema.jobs & stale_jobs.fetch("KEY")).delete()
+
+
+def _purge_invalid_jobs(JobTable, table):
+    """
+    Check and remove any invalid/outdated jobs in the JobTable for this autopopulate table
+    Job keys that are in the JobTable (regardless of status) but are no longer in the `key_source`
+    (e.g. jobs added but entries in upstream table(s) got deleted)
+    This is potentially a time-consuming process - but should not expect to have to run very often
+    """
+
+    jobs_query = JobTable & {"table_name": table.table_name}
+
+    if not jobs_query:
+        return
+
+    invalid_count = len(jobs_query) - len(table.key_source)
+    invalid_removed = 0
+    if invalid_count > 0:
+        for key, job_key in zip(*jobs_query.fetch("KEY", "key")):
+            if not (table.key_source & job_key):
+                (jobs_query & key).delete()
+                invalid_removed += 1
+
+        logger.info(
+            f"{invalid_removed}/{invalid_count} invalid jobs removed for `{dj.utils.to_camel_case(table.table_name)}`"
+        )
