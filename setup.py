@@ -10,6 +10,9 @@ with open("README.md", "r") as fh:
 with open(pathlib.Path(__file__).parent / pkg_name / "version.py") as f:
     exec(f.read())
 
+with open(pathlib.Path(__file__).parent / "requirements.txt") as f:
+    requirements = f.read().splitlines()
+
 setuptools.setup(
     name=pkg_name.replace("_", "-"),
     version=__version__,
