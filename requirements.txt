@@ -1,4 +1,4 @@
-datajoint>=0.13.5
+datajoint @ git+https://github.com/ttngu207/datajoint-python.git@populate_success_count
 termcolor
 slack-sdk
 python-dotenv
