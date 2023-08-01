@@ -132,6 +132,14 @@ class RegisteredWorker(dj.Manual):
                 else table.proj()
             )
 
+        def _remove_enclosed_parentheses(input_string):
+            pattern = r"\([^()]*\)"
+            # Use a while loop to recursively remove nested parentheses
+            while re.search(pattern, input_string):
+                # Replace all occurrences of the pattern with an {}
+                input_string = re.sub(pattern, "{}", input_string)
+            return input_string
+
         target = dj.FreeTable(full_table_name=target_full_table_name, conn=dj.conn())
 
         parents = target.parents(primary=True, as_objects=True, foreign_key_info=True)
@@ -141,9 +149,14 @@ class RegisteredWorker(dj.Manual):
             ks_parents *= _rename_attributes(*q)
 
         ks_attrs_sql = ks_parents.heading.as_sql(ks_parents.heading.primary_key)
+        AND_or_WHERE = (
+            "AND"
+            if "WHERE" in _remove_enclosed_parentheses(key_source_sql)
+            else " WHERE "
+        )
         in_queue_sql = (
             key_source_sql
-            + f"{'AND' if 'WHERE' in key_source_sql else ' WHERE '}(({ks_attrs_sql}) not in (SELECT {ks_attrs_sql} FROM {target.full_table_name}))"
+            + f"{AND_or_WHERE}(({ks_attrs_sql}) not in (SELECT {ks_attrs_sql} FROM {target.full_table_name}))"
         )
 
         total = len(dj.conn().query(key_source_sql).fetchall())
