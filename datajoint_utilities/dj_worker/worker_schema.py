@@ -12,6 +12,8 @@ import pandas as pd
 
 from datajoint.user_tables import Part, UserTable
 
+logger = dj.logger
+
 
 class RegisteredWorker(dj.Manual):
     definition = """
@@ -158,9 +160,14 @@ class RegisteredWorker(dj.Manual):
             key_source_sql
             + f"{AND_or_WHERE}(({ks_attrs_sql}) not in (SELECT {ks_attrs_sql} FROM {target.full_table_name}))"
         )
-
-        total = len(dj.conn().query(key_source_sql).fetchall())
-        in_queue = len(dj.conn().query(in_queue_sql).fetchall())
+        try:
+            total = len(dj.conn().query(key_source_sql).fetchall())
+            in_queue = len(dj.conn().query(in_queue_sql).fetchall())
+        except Exception as e:
+            logger.error(
+                f"Error retrieving key_source for: {target_full_table_name}. \n{e}"
+            )
+            total, in_queue = np.nan, np.nan
         return total, in_queue
 
 
