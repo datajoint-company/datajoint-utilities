@@ -284,8 +284,11 @@ def _clean_up(pipeline_modules, additional_error_patterns=[], db_prefix=""):
 def _purge_invalid_jobs(JobTable, table):
     """
     Check and remove any invalid/outdated jobs in the JobTable for this autopopulate table
-    Job keys that are in the JobTable (regardless of status) but are no longer in the `key_source`
-    (e.g. jobs added but entries in upstream table(s) got deleted)
+    Job keys that are in the JobTable (regardless of status) but
+    - are no longer in the `key_source`
+        (e.g. jobs added but entries in upstream table(s) got deleted)
+    - are present in the "target" table
+        (e.g. completed by another process/user)
     This is potentially a time-consuming process - but should not expect to have to run very often
     """
 
@@ -298,7 +301,7 @@ def _purge_invalid_jobs(JobTable, table):
     invalid_removed = 0
     if invalid_count > 0:
         for key, job_key in zip(*jobs_query.fetch("KEY", "key")):
-            if not (table.key_source & job_key):
+            if (not (table.key_source & job_key)) or (table & job_key):
                 (jobs_query & key).delete()
                 invalid_removed += 1
 
