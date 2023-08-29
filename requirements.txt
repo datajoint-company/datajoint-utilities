@@ -2,3 +2,5 @@ datajoint @ git+https://github.com/ttngu207/datajoint-python.git@populate_succes
 termcolor
 slack-sdk
 python-dotenv
+boto3
+requests

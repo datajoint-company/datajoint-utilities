@@ -1,5 +1,6 @@
 import requests
 import json
+import boto3
 
 from . import Notifier
 
@@ -67,5 +68,29 @@ class HubSpotTemplateEmailNotifier(Notifier):
         body = {**self.body, "customProperties": {**kwargs, "status_message": message}}
         response = requests.post(
             self.request_url, headers=self.headers, data=json.dumps(body, default=str)
+        )
+        return response
+
+
+class SNSNotifier(Notifier):
+    def __init__(
+        self, aws_region, aws_access_key_id, aws_secret_access_key, target_arn
+    ):
+        self.aws_region = aws_region
+        self.aws_access_key_id = aws_access_key_id
+        self.aws_secret_access_key = aws_secret_access_key
+        self.target_arn = target_arn
+
+    def notify(self, title, message, **kwargs):
+        sns = boto3.client(
+            "sns",
+            region_name=self.aws_region,
+            aws_access_key_id=self.aws_access_key_id,
+            aws_secret_access_key=self.aws_secret_access_key,
+        )
+        response = sns.publish(
+            TargetArn=self.target_arn,
+            Subject=(title),
+            Message=(message),
         )
         return response
