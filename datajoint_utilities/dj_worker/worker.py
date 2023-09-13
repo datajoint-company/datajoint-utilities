@@ -205,10 +205,9 @@ class DataJointWorker:
 
     def _purge_invalid_jobs(self):
         for process_type, process, _ in self._processes_to_run:
-            if process_type != "dj_table":
-                continue
-            vmod = self._pipeline_modules[process.database]
-            purge_invalid_jobs(vmod.schema.jobs, process)
+            if process_type == "dj_table":
+                vmod = self._pipeline_modules[process.database]
+                purge_invalid_jobs(vmod.schema.jobs, process)
 
     def run(self):
         """
