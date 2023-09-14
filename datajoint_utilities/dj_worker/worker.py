@@ -115,10 +115,10 @@ class DataJointWorker:
                 "process": get_process_name(process, self._db_prefix),
                 "process_index": index,
                 "full_table_name": process.full_table_name
-                if is_djtable(process)
+                if process_type == "dj_table"
                 else "",
                 "key_source_sql": process.key_source.proj().make_sql()
-                if is_djtable(process)
+                if process_type == "dj_table"
                 else None,
                 "process_kwargs": kwargs,
             }
@@ -203,6 +203,12 @@ class DataJointWorker:
         exceed_max_idled_cycle = 0 < self._max_idled_cycle < self._idled_cycle_count
         return not (exceed_run_duration or exceed_max_idled_cycle)
 
+    def _purge_invalid_jobs(self):
+        for process_type, process, _ in self._processes_to_run:
+            if process_type == "dj_table":
+                vmod = self._pipeline_modules[process.database]
+                purge_invalid_jobs(vmod.schema.jobs, process)
+
     def run(self):
         """
         Run all processes in a continual loop until the terminating condition is met (see "_keep_running()")
@@ -220,6 +226,8 @@ class DataJointWorker:
             else:
                 self._idled_cycle_count += bool(not success_count)
             time.sleep(self._sleep_duration)
+
+        self._purge_invalid_jobs()
         logger.info(f"Stopping DataJoint Worker: {self.name}")
 
 
@@ -281,11 +289,14 @@ def _clean_up(pipeline_modules, additional_error_patterns=[], db_prefix=""):
             (pipeline_module.schema.jobs & stale_jobs.fetch("KEY")).delete()
 
 
-def _purge_invalid_jobs(JobTable, table):
+def purge_invalid_jobs(JobTable, table):
     """
     Check and remove any invalid/outdated jobs in the JobTable for this autopopulate table
-    Job keys that are in the JobTable (regardless of status) but are no longer in the `key_source`
-    (e.g. jobs added but entries in upstream table(s) got deleted)
+    Job keys that are in the JobTable (regardless of status) but
+    - are no longer in the `key_source`
+        (e.g. jobs added but entries in upstream table(s) got deleted)
+    - are present in the "target" table
+        (e.g. completed by another process/user)
     This is potentially a time-consuming process - but should not expect to have to run very often
     """
 
@@ -294,14 +305,12 @@ def _purge_invalid_jobs(JobTable, table):
     if not jobs_query:
         return
 
-    invalid_count = len(jobs_query) - len(table.key_source)
     invalid_removed = 0
-    if invalid_count > 0:
-        for key, job_key in zip(*jobs_query.fetch("KEY", "key")):
-            if not (table.key_source & job_key):
-                (jobs_query & key).delete()
-                invalid_removed += 1
+    for key, job_key in zip(*jobs_query.fetch("KEY", "key")):
+        if (not (table.key_source & job_key)) or (table & job_key):
+            (jobs_query & key).delete()
+            invalid_removed += 1
 
-        logger.info(
-            f"{invalid_removed}/{invalid_count} invalid jobs removed for `{dj.utils.to_camel_case(table.table_name)}`"
-        )
+    logger.info(
+        f"\t{invalid_removed} invalid jobs removed for `{dj.utils.to_camel_case(table.table_name)}`"
+    )
