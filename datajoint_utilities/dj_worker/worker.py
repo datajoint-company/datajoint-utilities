@@ -32,9 +32,7 @@ _populate_settings = {
     "suppress_errors": True,
 }
 
-
-if dj.__version__ > "0.13.7":
-    _populate_settings["return_success_count"] = True
+RETURN_SUCCESS_COUNT = dj.__version__ > "0.14.0"
 
 
 class DataJointWorker:
@@ -62,9 +60,7 @@ class DataJointWorker:
         self._autoclear_error_patterns = autoclear_error_patterns
         self._run_duration = run_duration if run_duration is not None else -1
         self._sleep_duration = sleep_duration
-        self._max_idled_cycle = (
-            max_idled_cycle if "return_success_count" in _populate_settings else -1
-        )
+        self._max_idled_cycle = max_idled_cycle if RETURN_SUCCESS_COUNT else -1
         self._db_prefix = [db_prefix] if isinstance(db_prefix, str) else db_prefix
 
         self._processes_to_run = []
@@ -162,15 +158,15 @@ class DataJointWorker:
         """
         Run all processes in order, once
         """
-        success_count = 0 if "return_success_count" in _populate_settings else 1
+        success_count = 0 if RETURN_SUCCESS_COUNT else 1
         for process_type, process, kwargs in self._processes_to_run:
             WorkerLog.log_process_job(
                 process, worker_name=self.name, db_prefix=self._db_prefix
             )
             if process_type == "dj_table":
                 status = process.populate(**{**_populate_settings, **kwargs})
-                if "return_success_count" in _populate_settings:
-                    success_count += status[0]
+                if isinstance(status, dict):
+                    success_count += status["success_count"]
             elif process_type == "function":
                 try:
                     process(**kwargs)
