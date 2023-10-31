@@ -46,17 +46,11 @@ def list_drop_order(prefix):
             depends_on[upstream].append(schema)
     drop_list = []  # ordered list to drop
     while depends_on:
-        drop_list.extend(
-            k for k, v in depends_on.items() if not v
-        )  # empty is dropable
-        depends_on = {
-            k: v for k, v in depends_on.items() if v
-        }  # remove from dict
+        drop_list.extend(k for k, v in depends_on.items() if not v)  # empty is dropable
+        depends_on = {k: v for k, v in depends_on.items() if v}  # remove from dict
         for schema in depends_on:
             # Filter out items already in drop list
-            depends_on[schema] = [
-                s for s in depends_on[schema] if s not in drop_list
-            ]
+            depends_on[schema] = [s for s in depends_on[schema] if s not in drop_list]
 
     return drop_list
 
