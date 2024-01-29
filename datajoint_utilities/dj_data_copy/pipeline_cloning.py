@@ -3,6 +3,8 @@ import re
 import pathlib
 import importlib.util
 
+logger = dj.logger
+
 
 def find_part_table_ancestors(table, ancestors={}, verbose=False):
     """
@@ -16,10 +18,13 @@ def find_part_table_ancestors(table, ancestors={}, verbose=False):
         for full_table_name in ancestors_diagram.topological_sort():
             if full_table_name.isdigit():
                 continue
-            if full_table_name == part_table.full_table_name or full_table_name in ancestors:
+            if (
+                full_table_name == part_table.full_table_name
+                or full_table_name in ancestors
+            ):
                 continue
             if verbose:
-                print(f'\t\tstep into {full_table_name}')
+                logger.info(f"\t\tstep into {full_table_name}")
             free_tbl = dj.FreeTable(dj.conn(), full_table_name)
             ancestors = find_part_table_ancestors(free_tbl, ancestors=ancestors)
         ancestors[part_table.full_table_name] = part_table
@@ -29,11 +34,13 @@ def find_part_table_ancestors(table, ancestors={}, verbose=False):
     return ancestors
 
 
-def get_restricted_diagram_tables(restriction_tables,
-                                  schema_allow_list=None,
-                                  schema_block_list=None,
-                                  ancestors_only=False,
-                                  verbose=False):
+def get_restricted_diagram_tables(
+    restriction_tables,
+    schema_allow_list=None,
+    schema_block_list=None,
+    ancestors_only=False,
+    verbose=False,
+):
     """
     Search the full pipeline diagram to find the set of ancestor and descendant
         tables for the given "restriction_tables"
@@ -65,15 +72,18 @@ def get_restricted_diagram_tables(restriction_tables,
         if ancestor_table_name.isdigit():
             continue
         if verbose:
-            print(f'\tstep into to {ancestor_table_name}')
+            logger.info(f"\tstep into to {ancestor_table_name}")
         ancestor_table = dj.FreeTable(dj.conn(), ancestor_table_name)
 
         # check for allow-list and block-list
-        if (schema_allow_list and ancestor_table.database not in schema_allow_list)\
-                or (schema_block_list and ancestor_table.database in schema_block_list):
+        if (schema_allow_list and ancestor_table.database not in schema_allow_list) or (
+            schema_block_list and ancestor_table.database in schema_block_list
+        ):
             continue
 
-        ancestors = find_part_table_ancestors(ancestor_table, ancestors, verbose=verbose)
+        ancestors = find_part_table_ancestors(
+            ancestor_table, ancestors, verbose=verbose
+        )
 
     # walk down to find all descendants
     if not ancestors_only:
@@ -82,21 +92,25 @@ def get_restricted_diagram_tables(restriction_tables,
             if descendant_table_name.isdigit():
                 continue
             if verbose:
-                print(f'\tstep into to {descendant_table_name}')
+                logger.info(f"\tstep into to {descendant_table_name}")
             descendant_table = dj.FreeTable(dj.conn(), descendant_table_name)
 
             # check for allow-list and block-list
-            if (schema_allow_list and descendant_table.database not in schema_allow_list)\
-                    or (schema_block_list and descendant_table.database in schema_block_list):
+            if (
+                schema_allow_list and descendant_table.database not in schema_allow_list
+            ) or (schema_block_list and descendant_table.database in schema_block_list):
                 continue
 
-            descendants = find_part_table_ancestors(descendant_table, descendants, verbose=verbose)
+            descendants = find_part_table_ancestors(
+                descendant_table, descendants, verbose=verbose
+            )
 
     return {**ancestors, **descendants}
 
 
-def generate_schemas_definition_code(sorted_tables, schema_name_mapper={},
-                                     verbose=False, save_dir=None):
+def generate_schemas_definition_code(
+    sorted_tables, schema_name_mapper={}, verbose=False, save_dir=None
+):
     """
     Generate a .py string containing the code to instantiate DataJoint tables
         from the given list of "sorted_tables", with schema names modification provided in
@@ -111,60 +125,91 @@ def generate_schemas_definition_code(sorted_tables, schema_name_mapper={},
         + tables_definition: dictionary containing definition for all tables in each schema
     """
     sorted_schemas = {}
-    sorted_schemas = list({t.split('.')[0].strip('`'): None for t in sorted_tables
-                           if t.split('.')[0].strip('`') not in sorted_schemas})
+    sorted_schemas = list(
+        {
+            t.split(".")[0].strip("`"): None
+            for t in sorted_tables
+            if t.split(".")[0].strip("`") not in sorted_schemas
+        }
+    )
 
     schemas_code, schemas_table_definition = {}, {}
     for schema_name in sorted_schemas:
         if verbose:
-            print(f'\tProcessing {schema_name}')
+            logger.info(f"\tProcessing {schema_name}")
 
-        definition_str = 'import datajoint as dj\n\n\n'
+        definition_str = "import datajoint as dj\n\n\n"
 
         cloned_schema_name = schema_name_mapper.get(schema_name, schema_name)
 
-        definition_str += f'# -------------- {cloned_schema_name} -------------- \n\n\n'
+        definition_str += f"# -------------- {cloned_schema_name} -------------- \n\n\n"
 
-        schema_definition = dj.create_virtual_module(schema_name, schema_name).schema.save()
+        schema_definition = dj.create_virtual_module(
+            schema_name, schema_name
+        ).schema.save()
 
-        schema_str = re.search(r'schema = .*', schema_definition).group()
-        schema_str = 'schema = dj.Schema()'  # deferred activation
-        definition_str += f'{schema_str}\n\n'
+        schema_str = re.search(r"schema = .*", schema_definition).group()
+        schema_str = "schema = dj.Schema()"  # deferred activation
+        definition_str += f"{schema_str}\n\n"
 
         # update schema names for virtual modules
-        vmods_str = re.findall(r'vmod.*VirtualModule.*', schema_definition)
+        vmods_str = re.findall(r"vmod.*VirtualModule.*", schema_definition)
         for vmod_str in vmods_str:
-            vmod_name = re.search(r"VirtualModule\('(\w+)', '(\w+)'\)", vmod_str).groups()[-1]
-            vmod_str = vmod_str.replace(vmod_name, schema_name_mapper.get(vmod_name, vmod_name))
-            definition_str += f'{vmod_str}\n'
+            vmod_name = re.search(
+                r"VirtualModule\('(\w+)', '(\w+)'\)", vmod_str
+            ).groups()[-1]
+            vmod_str = vmod_str.replace(
+                vmod_name, schema_name_mapper.get(vmod_name, vmod_name)
+            )
+            definition_str += f"{vmod_str}\n"
 
-        definition_str += '\n\n'
+        definition_str += "\n\n"
 
         # add table definitions
-        tables_definition = [table_definition.replace('\n\n\n', '')
-                             for table_definition in re.findall(r'@schema.*?\n\n\n', schema_definition, re.DOTALL)]
-        tables_definition.append(re.search(r'.*(@schema.*$)', schema_definition, re.DOTALL).groups()[0])
+        tables_definition = [
+            table_definition.replace("\n\n\n", "")
+            for table_definition in re.findall(
+                r"@schema.*?\n\n\n", schema_definition, re.DOTALL
+            )
+        ]
+        tables_definition.append(
+            re.search(r".*(@schema.*$)", schema_definition, re.DOTALL).groups()[0]
+        )
 
         table_definition_dict = {}
         schemas_table_definition[cloned_schema_name] = {}
         for table_definition in tables_definition:
-            table_name = re.search(r'class\s(\w+)\((.+)\):', table_definition).groups()[0]
+            table_name = re.search(r"class\s(\w+)\((.+)\):", table_definition).groups()[
+                0
+            ]
             table_definition_dict[table_name] = table_definition
 
         # filter by the specified "sorted_tables"
-        table_names = [dj.utils.to_camel_case(t.split('.')[-1].strip('`'))
-                       for t in sorted_tables
-                       if t.startswith(f'`{schema_name}`') and
-                       not re.match(r'(?P<master>`\w+`.`#?\w+)__\w+`', t)]
+        table_names = [
+            dj.utils.to_camel_case(t.split(".")[-1].strip("`"))
+            for t in sorted_tables
+            if t.startswith(f"`{schema_name}`")
+            and not re.match(r"(?P<master>`\w+`.`#?\w+)__\w+`", t)
+        ]
 
         for table_name in table_names:
-            definition_str += f'{table_definition_dict[table_name]}\n\n\n'
-            schemas_table_definition[cloned_schema_name][table_name] = table_definition_dict[table_name]
+            definition_str += f"{table_definition_dict[table_name]}\n\n\n"
+            schemas_table_definition[cloned_schema_name][
+                table_name
+            ] = table_definition_dict[table_name]
 
         # schema activation
-        definition_str += f'\n\n# ---- schema activation ---- \n\n\n'
+        definition_str += f"\n\n# ---- schema activation ---- \n\n\n"
 
         definition_str += f'schema.activate("{cloned_schema_name}")\n\n'
+
+        # remove INDEX and UNIQUE lines
+        definition_str = re.sub(
+            r"\s+?INDEX.+?\n|\s+?UNIQUE.+?\n", "", definition_str, flags=re.MULTILINE
+        )
+        definition_str = re.sub(
+            r'([\(\)\[\]\w])( *)"""', r'\g<1>\n\g<2>"""', definition_str
+        )
 
         schemas_code[cloned_schema_name] = definition_str
 
@@ -172,14 +217,13 @@ def generate_schemas_definition_code(sorted_tables, schema_name_mapper={},
         save_dir = pathlib.Path(save_dir)
         save_dir.mkdir(exist_ok=True, parents=True)
         for cloned_schema_name, schema_definition_str in schemas_code.items():
-            with open(save_dir / f'{cloned_schema_name}.py', 'wt') as f:
+            with open(save_dir / f"{cloned_schema_name}.py", "wt") as f:
                 f.write(schema_definition_str)
 
     return schemas_code, schemas_table_definition
 
 
 class ClonedPipeline:
-
     def __init__(self, diagram, schema_name_mapper={}, verbose=False):
         assert isinstance(diagram, dj.diagram.Diagram)
 
@@ -213,7 +257,8 @@ class ClonedPipeline:
             self._code, self._tables_definition = generate_schemas_definition_code(
                 list(self.restricted_tables),
                 schema_name_mapper=self.schema_name_mapper,
-                verbose=self.verbose)
+                verbose=self.verbose,
+            )
         return self._code
 
     @property
@@ -222,7 +267,8 @@ class ClonedPipeline:
             self._code, self._tables_definition = generate_schemas_definition_code(
                 list(self.restricted_tables),
                 schema_name_mapper=self.schema_name_mapper,
-                verbose=self.verbose)
+                verbose=self.verbose,
+            )
         return self._tables_definition
 
     def find_restricted_diagram(self):
@@ -233,11 +279,12 @@ class ClonedPipeline:
             if ancestor_table_name.isdigit():
                 continue
             if self.verbose:
-                print(f'\tstep into to {ancestor_table_name}')
+                logger.info(f"\tstep into to {ancestor_table_name}")
             ancestor_table = dj.FreeTable(dj.conn(), ancestor_table_name)
 
-            ancestors = find_part_table_ancestors(ancestor_table, ancestors,
-                                                  verbose=self.verbose)
+            ancestors = find_part_table_ancestors(
+                ancestor_table, ancestors, verbose=self.verbose
+            )
 
         return ancestors
 
@@ -245,52 +292,54 @@ class ClonedPipeline:
         save_dir = pathlib.Path(save_dir)
         save_dir.mkdir(exist_ok=True, parents=True)
         for cloned_schema_name, schema_definition_str in self.code.items():
-            with open(save_dir / f'{cloned_schema_name}.py', 'wt') as f:
+            with open(save_dir / f"{cloned_schema_name}.py", "wt") as f:
                 f.write(schema_definition_str)
 
-    def instantiate_pipeline(self, prompt=True):
-        print(f'You are to instantiate {len(self.code)} new schema(s):')
-        [print(f'\t{s}') for s in self.code]
+    def instantiate_pipeline(self, prompt=True, max_try_count=None):
+        logger.info(f"You are to instantiate {len(self.code)} new schema(s):")
+        [logger.info(f"\t{s}") for s in self.code]
 
-        if prompt and dj.utils.user_choice('Proceed?') != 'yes':
-            print('Cancelled')
+        if prompt and dj.utils.user_choice("Proceed?") != "yes":
+            logger.info("Cancelled")
             return
 
         cloned_schema_names = list(self.code)
 
-        max_try_count = len(cloned_schema_names)
+        max_try_count = max_try_count or len(cloned_schema_names)
         try_count = 0
         while len(cloned_schema_names) and try_count <= max_try_count:
             try_count += 1
             cloned_schema_name = cloned_schema_names.pop(0)
             schema_definition_str = self.code[cloned_schema_name]
 
-            print(f'Instantiating {cloned_schema_name}...')
+            logger.info(f"Instantiating {cloned_schema_name}...")
 
-            upstream_schemas = re.findall(r'vmod.*, \'(.*)\'', schema_definition_str)
+            upstream_schemas = re.findall(r"vmod.*, \'(.*)\'", schema_definition_str)
             if any([s in cloned_schema_names for s in upstream_schemas]):
-                print(f'\tAt least one upstream ({upstream_schemas}) not yet instantiated, skipping...')
+                logger.info(
+                    f"\tAt least one upstream ({upstream_schemas}) not yet instantiated, skipping..."
+                )
                 cloned_schema_names.append(cloned_schema_name)
                 continue
 
             try:
                 exec(schema_definition_str)
             except dj.DataJointError as e:
-                print(f'\t{str(e)}')
+                logger.warning(f"\t{str(e)}")
                 cloned_schema_names.append(cloned_schema_name)
             except Exception as e:
-                print(f'\t{str(e)}')
+                logger.error(f"\t{str(e)}")
                 break
             else:
                 max_try_count -= 1
                 try_count = 0
 
         if not len(cloned_schema_names):
-            print('\nPipeline instantiation completed successfully')
+            logger.info("\nPipeline instantiation completed successfully")
         else:
-            print('\nPipeline instantiation failed!!')
+            logger.info("\nPipeline instantiation failed!!")
             partial_completion = [n for n in self.code if n not in cloned_schema_names]
             if partial_completion:
-                print('WARNING - Partial completion detected')
-                [print(f'\t{n}') for n in partial_completion]
-                print('You may want to drop the created schema(s)')
+                logger.info("WARNING - Partial completion detected")
+                [logger.info(f"\t{n}") for n in partial_completion]
+                logger.info("You may want to drop the created schema(s)")
