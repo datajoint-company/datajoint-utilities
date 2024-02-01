@@ -50,7 +50,7 @@ class RegisteredWorker(dj.Manual):
                 "key_source_sql",
                 table_name="full_table_name",
                 total="NULL",
-                in_queue="NULL",
+                incomplete="NULL",
             )
             .fetch(format="frame")
             .reset_index()
@@ -91,7 +91,7 @@ class RegisteredWorker(dj.Manual):
                 continue
             (
                 workflow_status.loc[r_idx, "total"],
-                workflow_status.loc[r_idx, "in_queue"],
+                workflow_status.loc[r_idx, "incomplete"],
             ) = cls._get_key_source_count(r.key_source_sql, r.table_name)
 
         # merge key_source and jobs status
@@ -109,7 +109,7 @@ class RegisteredWorker(dj.Manual):
         workflow_status.replace(np.inf, np.nan, inplace=True)
 
         workflow_status["remaining"] = (
-            workflow_status.in_queue
+            workflow_status.incomplete
             - workflow_status.reserved
             - workflow_status.error
             - workflow_status.ignore
@@ -156,19 +156,19 @@ class RegisteredWorker(dj.Manual):
             if "WHERE" in _remove_enclosed_parentheses(key_source_sql)
             else " WHERE "
         )
-        in_queue_sql = (
+        incomplete_sql = (
             key_source_sql
             + f"{AND_or_WHERE}(({ks_attrs_sql}) not in (SELECT {ks_attrs_sql} FROM {target.full_table_name}))"
         )
         try:
             total = len(dj.conn().query(key_source_sql).fetchall())
-            in_queue = len(dj.conn().query(in_queue_sql).fetchall())
+            incomplete = len(dj.conn().query(incomplete_sql).fetchall())
         except Exception as e:
             logger.error(
                 f"Error retrieving key_source for: {target_full_table_name}. \n{e}"
             )
-            total, in_queue = np.nan, np.nan
-        return total, in_queue
+            total, incomplete = np.nan, np.nan
+        return total, incomplete
 
 
 class WorkerLog(dj.Manual):

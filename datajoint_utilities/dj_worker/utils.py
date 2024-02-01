@@ -16,7 +16,7 @@ def _get_workflow_progress(db_prefixes, exclude_tables=()):
     Function to retrieve the processing status of a workflow comprised of all schemas with the specified prefix(es)
     Return a dataframe with all Imported/Computed tables, and their corresponding processing status:
         + total
-        + in queue
+        + incomplete
         + reserved
         + error
         + ignore
@@ -71,7 +71,7 @@ def _get_workflow_progress(db_prefixes, exclude_tables=()):
     workflow_status = pd.DataFrame(list(process_tables), columns=["table_name"])
     workflow_status.set_index("table_name", inplace=True)
 
-    _total, _in_queue = [], []
+    _total, _incomplete = [], []
     for t in workflow_status.index:
         logger.debug(f"\tprocessing {t}...")
         _total.append(
@@ -79,14 +79,14 @@ def _get_workflow_progress(db_prefixes, exclude_tables=()):
             if process_tables[t].__name__ in exclude_tables
             else len(process_tables[t].key_source)
         )
-        _in_queue.append(
+        _incomplete.append(
             np.inf
             if process_tables[t].__name__ in exclude_tables
             else len(process_tables[t].key_source - process_tables[t].proj())
         )
 
     workflow_status["total"] = _total
-    workflow_status["in_queue"] = _in_queue
+    workflow_status["incomplete"] = _incomplete
 
     workflow_status = workflow_status.join(
         job_status_df["reserved"]
@@ -99,7 +99,7 @@ def _get_workflow_progress(db_prefixes, exclude_tables=()):
     workflow_status.replace(np.inf, np.nan, inplace=True)
 
     workflow_status["remaining"] = (
-        workflow_status.in_queue
+        workflow_status.incomplete
         - workflow_status.reserved
         - workflow_status.error
         - workflow_status.ignore
@@ -116,7 +116,9 @@ def _get_workflow_progress(db_prefixes, exclude_tables=()):
     return workflow_status
 
 
-def get_workflow_operation_overview(worker_schema_name, db_prefixes=None, exclude_tables=()):
+def get_workflow_operation_overview(
+    worker_schema_name, db_prefixes=None, exclude_tables=()
+):
     try:
         workerlog_vm = dj.create_virtual_module("worker_vm", worker_schema_name)
     except dj.errors.DataJointError:
@@ -147,7 +149,9 @@ def get_workflow_operation_overview(worker_schema_name, db_prefixes=None, exclud
         raise ValueError(f"db_prefixes must be specified")
 
     # workflow_progress
-    workflow_progress = _get_workflow_progress(db_prefixes, exclude_tables=exclude_tables)
+    workflow_progress = _get_workflow_progress(
+        db_prefixes, exclude_tables=exclude_tables
+    )
     if workflow_progress.empty:
         return pd.DataFrame()
     # workers
