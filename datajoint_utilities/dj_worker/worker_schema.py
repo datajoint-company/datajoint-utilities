@@ -68,6 +68,10 @@ class RegisteredWorker(dj.Manual):
 
         job_status_df = {"reserved": [], "error": [], "ignore": []}
         for pipeline_schema in pipeline_schemas.values():
+            try:
+                len(pipeline_schema.jobs)
+            except dj.errors.DataJointError:
+                continue
             for job_status in ("reserved", "error", "ignore"):
                 status_df = (
                     dj.U("table_name")
@@ -143,6 +147,11 @@ class RegisteredWorker(dj.Manual):
             return input_string
 
         target = dj.FreeTable(full_table_name=target_full_table_name, conn=dj.conn())
+
+        try:
+            len(target)
+        except dj.errors.DataJointError:
+            return np.nan, np.nan
 
         parents = target.parents(primary=True, as_objects=True, foreign_key_info=True)
 
