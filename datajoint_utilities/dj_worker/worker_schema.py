@@ -68,6 +68,10 @@ class RegisteredWorker(dj.Manual):
 
         job_status_df = {"reserved": [], "error": [], "ignore": []}
         for pipeline_schema in pipeline_schemas.values():
+            try:
+                len(pipeline_schema.jobs)
+            except dj.errors.DataJointError:
+                continue
             for job_status in ("reserved", "error", "ignore"):
                 status_df = (
                     dj.U("table_name")
