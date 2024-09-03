@@ -50,6 +50,7 @@ class DataJointWorker:
         max_idled_cycle=-1,
         autoclear_error_patterns=[],
         db_prefix=[""],
+        remove_stale_reserved_jobs=True,
     ):
         self.name = worker_name
         self._worker_schema = dj.schema(worker_schema_name)
@@ -62,6 +63,7 @@ class DataJointWorker:
         self._sleep_duration = sleep_duration
         self._max_idled_cycle = max_idled_cycle if RETURN_SUCCESS_COUNT else -1
         self._db_prefix = [db_prefix] if isinstance(db_prefix, str) else db_prefix
+        self._remove_stale_reserved_jobs = remove_stale_reserved_jobs
 
         self._processes_to_run = []
         self._pipeline_modules = {}
@@ -181,6 +183,7 @@ class DataJointWorker:
             self._pipeline_modules.values(),
             additional_error_patterns=self._autoclear_error_patterns,
             db_prefix=self._db_prefix,
+            remove_stale_reserved_jobs=self._remove_stale_reserved_jobs,
         )
 
         WorkerLog.delete_old_logs()
@@ -227,11 +230,16 @@ class DataJointWorker:
         logger.info(f"Stopping DataJoint Worker: {self.name}")
 
 
-def _clean_up(pipeline_modules, additional_error_patterns=[], db_prefix=""):
+def _clean_up(pipeline_modules, additional_error_patterns=[], db_prefix="", remove_stale_reserved_jobs=True):
     """
     Routine to clear entries from the jobs table that are:
     + generic-type error jobs
     + stale "reserved" jobs
+        Stale "reserved" jobs are jobs with "reserved" status but the connection_id is not in the list of current connections
+        This could be due to a hard crash of the worker process or a network issue
+        However, there could be "reserved" jobs without a connection_id, but is actually being processed
+        Thus, identifying "stale reserved jobs" is not a guaranteed process, and should be used with caution
+        This ambiguity will be solved in future DataJoint version
     """
     _generic_errors = [
         "%Deadlock%",
@@ -267,22 +275,23 @@ def _clean_up(pipeline_modules, additional_error_patterns=[], db_prefix=""):
             additional_error_query.delete()
 
         # clear stale "reserved" jobs
-        current_connections = [
-            v[0]
-            for v in dj.conn().query(
-                "SELECT id FROM information_schema.processlist WHERE id <> CONNECTION_ID() ORDER BY id"
-            )
-        ]
-        if current_connections:
-            current_connections = (
-                f'({", ".join([str(c) for c in current_connections])})'
-            )
-            stale_jobs = (
-                pipeline_module.schema.jobs
-                & 'status = "reserved"'
-                & f"connection_id NOT IN {current_connections}"
-            )
-            (pipeline_module.schema.jobs & stale_jobs.fetch("KEY")).delete()
+        if remove_stale_reserved_jobs:
+            current_connections = [
+                v[0]
+                for v in dj.conn().query(
+                    "SELECT id FROM information_schema.processlist WHERE id <> CONNECTION_ID() ORDER BY id"
+                )
+            ]
+            if current_connections:
+                current_connections = (
+                    f'({", ".join([str(c) for c in current_connections])})'
+                )
+                stale_jobs = (
+                    pipeline_module.schema.jobs
+                    & 'status = "reserved"'
+                    & f"connection_id NOT IN {current_connections}"
+                )
+                (pipeline_module.schema.jobs & stale_jobs.fetch("KEY")).delete()
 
 
 def purge_invalid_jobs(JobTable, table):
