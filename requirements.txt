@@ -1,4 +1,4 @@
-datajoint @ git+https://github.com/datajoint/datajoint-python.git
+datajoint>=0.14.3
 termcolor
 slack-sdk
 python-dotenv

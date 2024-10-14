@@ -36,7 +36,7 @@ def migrate_schema(
 
     tbl_names = [
         tbl_name.split(".")[-1]
-        for tbl_name in dj.Diagram(origin_schema).topological_sort()
+        for tbl_name in dj.Diagram(origin_schema).topo_sort()
     ]
     tbl_names = [
         ".".join(
