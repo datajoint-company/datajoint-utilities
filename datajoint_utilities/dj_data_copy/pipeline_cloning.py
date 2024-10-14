@@ -15,7 +15,7 @@ def find_part_table_ancestors(table, ancestors={}, verbose=False):
     ancestors[table.full_table_name] = free_table
     for part_table in free_table.parts(as_objects=True):
         ancestors_diagram = dj.Diagram(part_table) - 999
-        for full_table_name in ancestors_diagram.topological_sort():
+        for full_table_name in ancestors_diagram.topo_sort():
             if full_table_name.isdigit():
                 continue
             if (
@@ -68,7 +68,7 @@ def get_restricted_diagram_tables(
 
     # walk up to search for all ancestors
     ancestors_diagram = diagram - 999
-    for ancestor_table_name in ancestors_diagram.topological_sort():
+    for ancestor_table_name in ancestors_diagram.topo_sort():
         if ancestor_table_name.isdigit():
             continue
         if verbose:
@@ -88,7 +88,7 @@ def get_restricted_diagram_tables(
     # walk down to find all descendants
     if not ancestors_only:
         descendants_diagram = diagram + 999
-        for descendant_table_name in descendants_diagram.topological_sort():
+        for descendant_table_name in descendants_diagram.topo_sort():
             if descendant_table_name.isdigit():
                 continue
             if verbose:
@@ -275,7 +275,7 @@ class ClonedPipeline:
         # walk up to search for all ancestors
         ancestors = {}
         ancestors_diagram = self.input_diagram - 999
-        for ancestor_table_name in ancestors_diagram.topological_sort():
+        for ancestor_table_name in ancestors_diagram.topo_sort():
             if ancestor_table_name.isdigit():
                 continue
             if self.verbose:
