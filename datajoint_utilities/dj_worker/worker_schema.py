@@ -38,19 +38,33 @@ class RegisteredWorker(dj.Manual):
         """
 
     @classmethod
-    def get_workers_progress(cls):
+    def get_workers_progress(cls, worker_name=None, process_name=None):
         """
         Return the operation progress for all registered workers (jobs status for each AutoPopulate process)
-        :return: pandas DataFrame of workers jobs status
+
+        Args:
+            worker_name (str): name of the worker (optionally restrict by worker_name)
+            process_name (str): name of the process (optionally restrict by process_name)
+
+        Returns:
+            pandas DataFrame of workers jobs status
         """
+        restriction = {}
+        if worker_name:
+            restriction["worker_name"] = worker_name
+        if process_name:
+            restriction["process"] = process_name
+
         workflow_status = (
-            (cls.Process & "key_source_sql is not NULL")
-            .proj(
-                "process",
-                "key_source_sql",
-                table_name="full_table_name",
-                total="NULL",
-                incomplete="NULL",
+            (
+                (cls.Process & "key_source_sql is not NULL").proj(
+                    "process",
+                    "key_source_sql",
+                    table_name="full_table_name",
+                    total="NULL",
+                    incomplete="NULL",
+                )
+                & restriction
             )
             .fetch(format="frame")
             .reset_index()
@@ -96,7 +110,7 @@ class RegisteredWorker(dj.Manual):
             (
                 workflow_status.loc[r_idx, "total"],
                 workflow_status.loc[r_idx, "incomplete"],
-            ) = cls._get_key_source_count(r.key_source_sql, r.table_name)
+            ) = cls.get_key_source_count(r.key_source_sql, r.table_name)
 
         # merge key_source and jobs status
         workflow_status.set_index("table_name", inplace=True)
@@ -124,7 +138,10 @@ class RegisteredWorker(dj.Manual):
         return workflow_status
 
     @classmethod
-    def _get_key_source_count(cls, key_source_sql, target_full_table_name):
+    def get_incomplete_key_source_sql(cls, key_source_sql, target_full_table_name):
+        """
+        From `key_source_sql`, build a SQL statement to find incomplete key_source entries in the target table
+        """
         def _rename_attributes(table, props):
             return (
                 table.proj(
@@ -169,6 +186,14 @@ class RegisteredWorker(dj.Manual):
             key_source_sql
             + f"{AND_or_WHERE}(({ks_attrs_sql}) not in (SELECT {ks_attrs_sql} FROM {target.full_table_name}))"
         )
+        return incomplete_sql
+
+    @classmethod
+    def get_key_source_count(cls, key_source_sql, target_full_table_name):
+        """
+        From `key_source_sql`, count the total and incomplete key_source entries in the target table
+        """
+        incomplete_sql = cls.get_incomplete_key_source_sql(key_source_sql, target_full_table_name)
         try:
             total = len(dj.conn().query(key_source_sql).fetchall())
             incomplete = len(dj.conn().query(incomplete_sql).fetchall())
