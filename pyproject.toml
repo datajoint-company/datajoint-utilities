@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=62.0", "wheel>=0.37"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "datajoint-utilities"
+version = "0.5.0"
+description = "A general purpose repository containing all generic tools/utilities surrounding the DataJoint ecosystem"
+requires-python = ">=3.9, <3.12"
+license = { file = "LICENSE" }
+authors = [{ name = "DataJoint", email = "info@datajoint.com" }]
+keywords = ["datajoint", "workflow"]
+classifiers = [
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "datajoint>=0.14.3",
+    "termcolor",
+    "slack-sdk",
+    "python-dotenv",
+    "boto3",
+    "requests",
+]
+
+[project.scripts]
+tmplcfg = "datajoint_utilities.cmdline.tmplcfg:cli"
+
+[project.urls]
+Source = "https://github.com/datajoint-company/datajoint-utilities"
+DataJoint = "https://datajoint.com/docs"
+
+[tool.setuptools]
+package-data = { "*" = ["*.pyi", "py.typed"] }
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-rA"
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+color = false
+exclude = '''
+/(
+    \.git
+    | \.venv
+    | _build
+    | example_data
+    | build
+    | dist
+    | env
+    | venv
+)/
+'''
+
+[tool.isort]
+profile = "black"
