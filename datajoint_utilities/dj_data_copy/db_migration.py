@@ -17,7 +17,7 @@ def migrate_schema(
     table_block_list=[],
     allow_missing_destination_tables=True,
     force_fetch=False,
-    batch_size=None
+    batch_size=None,
 ):
     """
     Data migration from all tables from `origin_schema` to `destination_schema`, in topologically sorted order
@@ -35,8 +35,7 @@ def migrate_schema(
     total_transferred_count = 0
 
     tbl_names = [
-        tbl_name.split(".")[-1]
-        for tbl_name in dj.Diagram(origin_schema).topo_sort()
+        tbl_name.split(".")[-1] for tbl_name in dj.Diagram(origin_schema).topo_sort()
     ]
     tbl_names = [
         ".".join(
@@ -48,7 +47,9 @@ def migrate_schema(
     print(f"Data migration for schema: {origin_schema.schema.database}")
 
     for tbl_name in tbl_names:
-        if (tbl_name in table_block_list) or ("." in tbl_name and tbl_name.split('.')[0] in table_block_list):
+        if (tbl_name in table_block_list) or (
+            "." in tbl_name and tbl_name.split(".")[0] in table_block_list
+        ):
             continue
 
         orig_tbl = get_table(origin_schema, tbl_name)
@@ -62,7 +63,11 @@ def migrate_schema(
                 raise e
 
         transferred_count, to_transfer_count = migrate_table(
-            orig_tbl, dest_tbl, restriction=restriction, force_fetch=force_fetch, batch_size=batch_size
+            orig_tbl,
+            dest_tbl,
+            restriction=restriction,
+            force_fetch=force_fetch,
+            batch_size=batch_size,
         )
         total_transferred_count += transferred_count
         total_to_transfer_count += to_transfer_count
@@ -73,7 +78,9 @@ def migrate_schema(
     return total_transferred_count, total_to_transfer_count
 
 
-def migrate_table(orig_tbl, dest_tbl, restriction={}, force_fetch=True, batch_size=None):
+def migrate_table(
+    orig_tbl, dest_tbl, restriction={}, force_fetch=True, batch_size=None
+):
     """
     Migrate data from `orig_tbl` to `dest_tbl`
 
@@ -103,12 +110,14 @@ def migrate_table(orig_tbl, dest_tbl, restriction={}, force_fetch=True, batch_si
     dest_tbl &= restriction
 
     # check if there's external datatype to be transferred
-    has_external = any("@" in attr.type for attr in orig_tbl.heading.attributes.values())
+    has_external = any(
+        "@" in attr.type for attr in orig_tbl.heading.attributes.values()
+    )
 
     if is_different_server:
         records_to_transfer = (
             orig_tbl.proj() - (orig_tbl & dest_tbl.fetch("KEY")).proj()
-        ).fetch('KEY')
+        ).fetch("KEY")
     else:
         records_to_transfer = orig_tbl.proj() - dest_tbl.proj()
 
@@ -121,18 +130,28 @@ def migrate_table(orig_tbl, dest_tbl, restriction={}, force_fetch=True, batch_si
         dj.blob.bypass_serialization = True
         try:
             if batch_size is not None and must_fetch:
-                for i in tqdm(range(0, to_transfer_count, batch_size), file=sys.stdout, desc=f'\tBatch migration for table {table_name}'):
-                    entries = (orig_tbl & records_to_transfer).fetch(as_dict=True, offset=i, limit=batch_size)
-                    dest_tbl.insert(entries, skip_duplicates=True, allow_direct_insert=True)
+                for i in tqdm(
+                    range(0, to_transfer_count, batch_size),
+                    file=sys.stdout,
+                    desc=f"\tBatch migration for table {table_name}",
+                ):
+                    entries = (orig_tbl & records_to_transfer).fetch(
+                        as_dict=True, offset=i, limit=batch_size
+                    )
+                    dest_tbl.insert(
+                        entries, skip_duplicates=True, allow_direct_insert=True
+                    )
                     transferred_count += len(entries)
             else:
-                entries = ((orig_tbl & records_to_transfer).fetch(as_dict=True)
-                           if must_fetch
-                           else (orig_tbl & records_to_transfer))
+                entries = (
+                    (orig_tbl & records_to_transfer).fetch(as_dict=True)
+                    if must_fetch
+                    else (orig_tbl & records_to_transfer)
+                )
                 dest_tbl.insert(entries, skip_duplicates=True, allow_direct_insert=True)
                 transferred_count = to_transfer_count
         except dj.DataJointError as e:
-            print(f'\n\tData copy error: {str(e)}')
+            print(f"\n\tData copy error: {str(e)}")
         dj.blob.bypass_serialization = _bypass_serialization
 
     print(f"{transferred_count}/{to_transfer_count} records")
@@ -141,7 +160,7 @@ def migrate_table(orig_tbl, dest_tbl, restriction={}, force_fetch=True, batch_si
 
 def get_table(pipeline_module, table_name):
     """
-    Given a "pipeline_module" (e.g. from dj.VirtualModule) - return the DataJoint table with the name specified in "table_name" 
+    Given a "pipeline_module" (e.g. from dj.VirtualModule) - return the DataJoint table with the name specified in "table_name"
 
     :param pipeline_module: pipeline module to retrieve the table from (e.g. from dj.VirtualModule)
     :param table_name: name of the table (or part table), in PascalCase, e.g. `Session` or `Probe.Electrode`

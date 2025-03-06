@@ -194,9 +194,9 @@ def generate_schemas_definition_code(
 
         for table_name in table_names:
             definition_str += f"{table_definition_dict[table_name]}\n\n\n"
-            schemas_table_definition[cloned_schema_name][
-                table_name
-            ] = table_definition_dict[table_name]
+            schemas_table_definition[cloned_schema_name][table_name] = (
+                table_definition_dict[table_name]
+            )
 
         # schema activation
         definition_str += f"\n\n# ---- schema activation ---- \n\n\n"

@@ -6,6 +6,7 @@ from .worker import RegisteredWorker, WorkerLog, ErrorLog, DataJointWorker, logg
 
 # arg-parser for usage as CLI
 
+
 # combine different formatters
 class ArgumentDefaultsRawDescriptionHelpFormatter(
     argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter
