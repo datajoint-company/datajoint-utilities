@@ -14,7 +14,6 @@ Example:
             --write-mode=a --chmod=660 -t settings.py -s settings_template.py
 """
 
-
 import json
 import logging
 import os

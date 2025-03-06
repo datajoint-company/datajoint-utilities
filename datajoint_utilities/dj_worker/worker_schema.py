@@ -143,6 +143,7 @@ class RegisteredWorker(dj.Manual):
         """
         From `key_source_sql`, build a SQL statement to find incomplete key_source entries in the target table
         """
+
         def _rename_attributes(table, props):
             return (
                 table.proj(
@@ -156,7 +157,9 @@ class RegisteredWorker(dj.Manual):
                 else table.proj()
             )
 
-        target = dj.FreeTable(full_table_name=target_full_table_name, conn=cls.connection)
+        target = dj.FreeTable(
+            full_table_name=target_full_table_name, conn=cls.connection
+        )
 
         try:
             len(target)
@@ -182,10 +185,13 @@ class RegisteredWorker(dj.Manual):
         return incomplete_sql
 
     @classmethod
-    def get_key_source_count(cls, key_source_sql: str,
-                             target_full_table_name: str,
-                             andlist_restriction: AndList = None,
-                             return_sql=False):
+    def get_key_source_count(
+        cls,
+        key_source_sql: str,
+        target_full_table_name: str,
+        andlist_restriction: AndList = None,
+        return_sql=False,
+    ):
         """
         From `key_source_sql`, count the total and incomplete key_source entries in the target table
         Args:
@@ -195,7 +201,9 @@ class RegisteredWorker(dj.Manual):
              - the `restriction` property of QueryExpression - e.g. (table & key).restriction
             return_sql (bool): if True, return the SQL statement instead of the count
         """
-        incomplete_sql = cls.get_incomplete_key_source_sql(key_source_sql, target_full_table_name)
+        incomplete_sql = cls.get_incomplete_key_source_sql(
+            key_source_sql, target_full_table_name
+        )
 
         if andlist_restriction:
             restriction_str = ")AND(".join(str(s) for s in andlist_restriction)

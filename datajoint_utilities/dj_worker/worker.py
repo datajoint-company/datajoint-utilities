@@ -10,6 +10,7 @@ Some populate settings (e.g. 'limit', 'max_calls') can be set to process some nu
 a time for every iteration of the loop, instead of all jobs. This allows for the controll of the processing to
 propagate through the pipeline more horizontally or vertically.
 """
+
 import inspect
 import time
 from datetime import datetime
@@ -112,12 +113,14 @@ class DataJointWorker:
                 "worker_name": self.name,
                 "process": get_process_name(process, self._db_prefix),
                 "process_index": index,
-                "full_table_name": process.full_table_name
-                if process_type == "dj_table"
-                else "",
-                "key_source_sql": process.key_source.proj().make_sql()
-                if process_type == "dj_table"
-                else None,
+                "full_table_name": (
+                    process.full_table_name if process_type == "dj_table" else ""
+                ),
+                "key_source_sql": (
+                    process.key_source.proj().make_sql()
+                    if process_type == "dj_table"
+                    else None
+                ),
                 "process_kwargs": kwargs,
             }
             entry["process_config_uuid"] = dict_to_uuid(entry)
@@ -230,7 +233,12 @@ class DataJointWorker:
         logger.info(f"Stopping DataJoint Worker: {self.name}")
 
 
-def _clean_up(pipeline_modules, additional_error_patterns=[], db_prefix="", remove_stale_reserved_jobs=True):
+def _clean_up(
+    pipeline_modules,
+    additional_error_patterns=[],
+    db_prefix="",
+    remove_stale_reserved_jobs=True,
+):
     """
     Routine to clear entries from the jobs table that are:
     + generic-type error jobs

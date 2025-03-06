@@ -11,7 +11,9 @@ os.environ["DJ_SUPPORT_FILEPATH_MANAGEMENT"] = "TRUE"
 logger = dj.logger
 
 
-def _get_workflow_progress(db_prefixes, exclude_tables=()):
+def _get_workflow_progress(
+    db_prefixes, exclude_tables=(), connection: dj.Connection = None
+):
     """
     Function to retrieve the processing status of a workflow comprised of all schemas with the specified prefix(es)
     Return a dataframe with all Imported/Computed tables, and their corresponding processing status:
@@ -28,8 +30,11 @@ def _get_workflow_progress(db_prefixes, exclude_tables=()):
 
     (Note: not topologically sorted)
     """
+    if connection is None:
+        connection = dj.conn()
+
     pipeline_modules = {
-        n: dj.create_virtual_module(n, n)
+        n: dj.create_virtual_module(n, n, connection=connection)
         for n in dj.list_schemas()
         if re.match("|".join(db_prefixes), n)
     }
@@ -117,16 +122,24 @@ def _get_workflow_progress(db_prefixes, exclude_tables=()):
 
 
 def get_workflow_operation_overview(
-    worker_schema_name, db_prefixes=None, exclude_tables=()
+    worker_schema_name,
+    db_prefixes=None,
+    exclude_tables=(),
+    connection: dj.Connection = None,
 ):
+    if connection is None:
+        connection = dj.conn()
+
     try:
-        workerlog_vm = dj.create_virtual_module("worker_vm", worker_schema_name)
+        workerlog_vm = dj.create_virtual_module(
+            "worker_vm", worker_schema_name, connection=connection
+        )
     except dj.errors.DataJointError:
         return pd.DataFrame()
 
     # -- New method to retrieve workflow_operation_overview more accurately, accounting for modified key_source
     if hasattr(workerlog_vm, RegisteredWorker.__name__):
-        _schema = dj.schema(worker_schema_name)
+        _schema = dj.schema(worker_schema_name, connection=connection)
         _schema(RegisteredWorker)
         # confirm workers' processes overlap with the specified db_prefixes
         is_valid_db_prefixes = db_prefixes is None or set(
@@ -150,7 +163,7 @@ def get_workflow_operation_overview(
 
     # workflow_progress
     workflow_progress = _get_workflow_progress(
-        db_prefixes, exclude_tables=exclude_tables
+        db_prefixes, exclude_tables=exclude_tables, connection=connection
     )
     if workflow_progress.empty:
         return pd.DataFrame()
