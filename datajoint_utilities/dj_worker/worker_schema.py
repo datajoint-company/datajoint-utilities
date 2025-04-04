@@ -77,7 +77,7 @@ class RegisteredWorker(dj.Manual):
             [n.split(".")[0].strip("`") for n in workflow_status.table_name if n]
         )
         pipeline_schemas = {
-            n: dj.Schema(n, create_schema=False, create_tables=False)
+            n: dj.Schema(n, connection=cls.connection, create_schema=False, create_tables=False)
             for n in schema_names
         }
 
