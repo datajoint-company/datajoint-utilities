@@ -449,11 +449,17 @@ def handle_stale_reserved_jobs(
     elif action == "remove":
         (pipeline_module.schema.jobs & stale_jobs.fetch("KEY")).delete()
     elif action == "error":
+        schema_name = pipeline_module.schema.database
+        error_message = "Stale reserved job (process crashed or terminated without error)"
         for table_name, job_key in zip(*stale_jobs.fetch("table_name", "key")):
             pipeline_module.schema.jobs.error(
                 table_name, 
                 job_key, 
-                error_message="Stale reserved job (process crashed or terminated without error)"
+                error_message=error_message
+            )
+            full_table_name = f"`{schema_name}`.`{table_name}`"
+            logger.debug(
+                f"Error making {job_key} -> {full_table_name} - {error_message}"
             )
     else:
         raise ValueError(f"Invalid action: {action}, must be 'error', 'remove', or None")
