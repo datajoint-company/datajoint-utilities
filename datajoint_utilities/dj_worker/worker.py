@@ -130,18 +130,20 @@ class DataJointWorker:
         self._sleep_duration = sleep_duration
         self._max_idled_cycle = max_idled_cycle if RETURN_SUCCESS_COUNT else -1
         self._db_prefix = [db_prefix] if isinstance(db_prefix, str) else db_prefix
-        
+
         # Handle backward compatibility
         if remove_stale_reserved_jobs is not None:
             warnings.warn(
                 "The 'remove_stale_reserved_jobs' parameter is deprecated and will be removed in a future version. "
                 "Use 'stale_timeout_hours' instead.",
                 DeprecationWarning,
-                stacklevel=2
+                stacklevel=2,
             )
             # If remove_stale_reserved_jobs is False, set time limit to 0 (disabled)
             # If True, keep the default 24 hours
-            self._stale_timeout_hours = 0 if not remove_stale_reserved_jobs else stale_timeout_hours
+            self._stale_timeout_hours = (
+                0 if not remove_stale_reserved_jobs else stale_timeout_hours
+            )
         else:
             self._stale_timeout_hours = stale_timeout_hours
 
@@ -404,7 +406,7 @@ def handle_stale_reserved_jobs(
     pipeline_module,
     stale_timeout_hours: int = 24,
     action: str = "error",
-) -> None | dj.Table:
+):
     """
     Handle stale reserved jobs by either marking them as errors or removing them.
     A job is considered stale if it meets BOTH conditions:
@@ -428,7 +430,8 @@ def handle_stale_reserved_jobs(
 
     stale_jobs = (
         pipeline_module.schema.jobs.proj(
-            ..., elapsed_hours="TIMESTAMPDIFF(HOUR, timestamp, NOW())")
+            ..., elapsed_hours="TIMESTAMPDIFF(HOUR, timestamp, NOW())"
+        )
         & 'status = "reserved"'
         & f"elapsed_hours > {stale_timeout_hours}"
     )
@@ -439,7 +442,7 @@ def handle_stale_reserved_jobs(
             "SELECT id FROM information_schema.processlist WHERE id <> CONNECTION_ID() ORDER BY id"
         )
     ]
-    
+
     if current_connections:
         current_connections = f'({", ".join([str(c) for c in current_connections])})'
         stale_jobs &= f"connection_id NOT IN {current_connections}"
@@ -450,16 +453,18 @@ def handle_stale_reserved_jobs(
         (pipeline_module.schema.jobs & stale_jobs.fetch("KEY")).delete()
     elif action == "error":
         schema_name = pipeline_module.schema.database
-        error_message = "Stale reserved job (process crashed or terminated without error)"
+        error_message = (
+            "Stale reserved job (process crashed or terminated without error)"
+        )
         for table_name, job_key in zip(*stale_jobs.fetch("table_name", "key")):
             pipeline_module.schema.jobs.error(
-                table_name, 
-                job_key, 
-                error_message=error_message
+                table_name, job_key, error_message=error_message
             )
             full_table_name = f"`{schema_name}`.`{table_name}`"
             logger.debug(
                 f"Error making {job_key} -> {full_table_name} - {error_message}"
             )
     else:
-        raise ValueError(f"Invalid action: {action}, must be 'error', 'remove', or None")
+        raise ValueError(
+            f"Invalid action: {action}, must be 'error', 'remove', or None"
+        )
