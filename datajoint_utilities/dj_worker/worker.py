@@ -142,7 +142,7 @@ class DataJointWorker:
             # If remove_stale_reserved_jobs is False, set time limit to 0 (disabled)
             # If True, keep the default 24 hours
             self._stale_timeout_hours = (
-                0 if not remove_stale_reserved_jobs else stale_timeout_hours
+                stale_timeout_hours if remove_stale_reserved_jobs else 0
             )
         else:
             self._stale_timeout_hours = stale_timeout_hours
