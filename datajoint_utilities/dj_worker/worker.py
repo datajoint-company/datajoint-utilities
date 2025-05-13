@@ -1,18 +1,37 @@
 """
-Mechanism to set up and manage "workers" to operate a DataJoint pipeline
-Each "worker" is run in a while-loop with the total run-duration configurable via
-command line argument '--duration' (if not set, runs perpetually)
-    - the loop will not begin a new cycle after this period of time (in seconds)
-    - the loop will run perpetually if duration<0 or if duration==None
-    - the script will not be killed _at_ this limit, it will keep executing,
-      and just stop repeating after the time limit is exceeded
-Some populate settings (e.g. 'limit', 'max_calls') can be set to process some number of jobs at
-a time for every iteration of the loop, instead of all jobs. This allows for the controll of the processing to
-propagate through the pipeline more horizontally or vertically.
+DataJoint Worker - A robust pipeline execution manager for DataJoint workflows.
+
+This module provides a mechanism to set up and manage "workers" that operate DataJoint pipelines.
+Each worker runs in a configurable loop that can:
+- Execute DataJoint populate operations and custom functions
+- Handle job reservations and error states
+- Clean up stale jobs and error patterns
+- Log worker activities and errors
+
+Key Features:
+- Configurable run duration and sleep intervals
+- Automatic handling of stale jobs with time-based detection
+- Comprehensive logging of worker activities and errors
+- Backward compatibility with existing configurations
+
+The worker maintains its own schema with tables for:
+- RegisteredWorker: Tracks worker registration and configuration
+- WorkerLog: Records worker activity and job processing
+- ErrorLog: Stores error information for failed jobs
+
+Example:
+    @DataJointWorker("my_worker", "worker_schema")
+    def my_process():
+        # Your pipeline process here
+        pass
+
+    # Run the worker
+    my_process.run()
 """
 
 import inspect
 import time
+import warnings
 from datetime import datetime
 import datajoint as dj
 
@@ -38,7 +57,27 @@ RETURN_SUCCESS_COUNT = dj.__version__ > "0.14.0"
 
 class DataJointWorker:
     """
-    A decorator class for running and managing the populate jobs
+    A decorator class for running and managing the populate jobs.
+
+    The worker runs in a configurable loop that continues until one of these conditions is met:
+    1. Run duration exceeded: If run_duration > 0 and elapsed time > run_duration
+    2. Max idle cycles exceeded: If max_idled_cycle > 0 and consecutive idle cycles > max_idled_cycle
+
+    Each cycle of the loop:
+    1. Executes all registered processes in sequence
+    2. Handles any errors that occur during execution
+    3. Cleans up stale jobs and error patterns
+    4. Logs worker activities and errors
+    5. Sleeps for the configured duration before the next cycle
+
+    Note: When a stop condition is met, the worker will complete the current cycle (including
+    all processes, error handling, and cleanup) before stopping. This ensures no jobs are
+    left in an inconsistent state.
+
+    The worker maintains its own schema with tables for:
+    - RegisteredWorker: Tracks worker registration and configuration
+    - WorkerLog: Records worker activity and job processing
+    - ErrorLog: Stores error information for failed jobs
     """
 
     def __init__(
@@ -51,8 +90,35 @@ class DataJointWorker:
         max_idled_cycle=-1,
         autoclear_error_patterns=[],
         db_prefix=[""],
-        remove_stale_reserved_jobs=True,
+        stale_timeout_hours=24,
+        remove_stale_reserved_jobs=None,  # For backward compatibility
     ):
+        """
+        Initialize a DataJoint worker to manage and execute pipeline processes.
+
+        A worker is responsible for:
+        1. Managing the execution of DataJoint populate operations and custom functions
+        2. Handling job reservations and error states
+        3. Cleaning up stale jobs and error patterns
+        4. Logging worker activities and errors
+
+        Args:
+            worker_name: Unique identifier for this worker instance
+            worker_schema_name: Name of the schema where worker-related tables are stored
+            run_duration: Maximum runtime in seconds (-1 for unlimited)
+            sleep_duration: Time to wait between processing cycles in seconds
+            max_idled_cycle: Maximum number of consecutive cycles with no successful jobs (-1 for unlimited)
+            autoclear_error_patterns: List of error message patterns to automatically clear
+            db_prefix: Prefix(es) for database names when logging errors
+            stale_timeout_hours: Time in hours after which a reserved job is considered stale
+            remove_stale_reserved_jobs: [DEPRECATED] Use stale_timeout_hours instead
+
+        Note:
+            The worker maintains its own schema with tables for:
+            - RegisteredWorker: Tracks worker registration and configuration
+            - WorkerLog: Records worker activity and job processing
+            - ErrorLog: Stores error information for failed jobs
+        """
         self.name = worker_name
         self._worker_schema = dj.schema(worker_schema_name)
         self._worker_schema(RegisteredWorker)
@@ -64,7 +130,22 @@ class DataJointWorker:
         self._sleep_duration = sleep_duration
         self._max_idled_cycle = max_idled_cycle if RETURN_SUCCESS_COUNT else -1
         self._db_prefix = [db_prefix] if isinstance(db_prefix, str) else db_prefix
-        self._remove_stale_reserved_jobs = remove_stale_reserved_jobs
+
+        # Handle backward compatibility
+        if remove_stale_reserved_jobs is not None:
+            warnings.warn(
+                "The 'remove_stale_reserved_jobs' parameter is deprecated and will be removed in a future version. "
+                "Use 'stale_timeout_hours' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            # If remove_stale_reserved_jobs is False, set time limit to 0 (disabled)
+            # If True, keep the default 24 hours
+            self._stale_timeout_hours = (
+                stale_timeout_hours if remove_stale_reserved_jobs else 0
+            )
+        else:
+            self._stale_timeout_hours = stale_timeout_hours
 
         self._processes_to_run = []
         self._pipeline_modules = {}
@@ -146,6 +227,7 @@ class DataJointWorker:
                 "max_idled_cycle": self._max_idled_cycle,
                 "autoclear_error_patterns": self._autoclear_error_patterns,
                 "db_prefix": self._db_prefix,
+                "stale_timeout_hours": self._stale_timeout_hours,
             },
             "worker_config_uuid": worker_config_uuid,
         }
@@ -186,7 +268,7 @@ class DataJointWorker:
             self._pipeline_modules.values(),
             additional_error_patterns=self._autoclear_error_patterns,
             db_prefix=self._db_prefix,
-            remove_stale_reserved_jobs=self._remove_stale_reserved_jobs,
+            stale_timeout_hours=self._stale_timeout_hours,
         )
 
         WorkerLog.delete_old_logs()
@@ -196,7 +278,14 @@ class DataJointWorker:
 
     def _keep_running(self):
         """
-        Determine whether or not to keep running all the processes again and again
+        Determine whether the worker should continue running based on configured limits.
+
+        The worker will stop if ANY of these conditions are met:
+        1. Run duration exceeded: If run_duration > 0 and elapsed time > run_duration
+        2. Max idle cycles exceeded: If max_idled_cycle > 0 and consecutive idle cycles > max_idled_cycle
+
+        Returns:
+            bool: True if the worker should continue running, False otherwise
         """
         exceed_run_duration = not (
             time.time() - self._run_start_time < self._run_duration
@@ -237,17 +326,17 @@ def _clean_up(
     pipeline_modules,
     additional_error_patterns=[],
     db_prefix="",
-    remove_stale_reserved_jobs=True,
+    stale_timeout_hours: int = 24,  # Default 24 hours timeout
 ):
     """
     Routine to clear entries from the jobs table that are:
     + generic-type error jobs
     + stale "reserved" jobs
-        Stale "reserved" jobs are jobs with "reserved" status but the connection_id is not in the list of current connections
-        This could be due to a hard crash of the worker process or a network issue
-        However, there could be "reserved" jobs without a connection_id, but is actually being processed
-        Thus, identifying "stale reserved jobs" is not a guaranteed process, and should be used with caution
-        This ambiguity will be solved in future DataJoint version
+        Stale "reserved" jobs are jobs that meet BOTH conditions:
+        1. Have been in "reserved" status for longer than the specified time limit (in hours)
+        2. The connection_id associated with the job is no longer active
+        This helps clean up jobs that may have been abandoned due to worker crashes or network issues
+        while ensuring we don't remove jobs that are still being actively processed.
     """
     _generic_errors = [
         "%Deadlock%",
@@ -282,24 +371,8 @@ def _clean_up(
                 )
             additional_error_query.delete()
 
-        # clear stale "reserved" jobs
-        if remove_stale_reserved_jobs:
-            current_connections = [
-                v[0]
-                for v in dj.conn().query(
-                    "SELECT id FROM information_schema.processlist WHERE id <> CONNECTION_ID() ORDER BY id"
-                )
-            ]
-            if current_connections:
-                current_connections = (
-                    f'({", ".join([str(c) for c in current_connections])})'
-                )
-                stale_jobs = (
-                    pipeline_module.schema.jobs
-                    & 'status = "reserved"'
-                    & f"connection_id NOT IN {current_connections}"
-                )
-                (pipeline_module.schema.jobs & stale_jobs.fetch("KEY")).delete()
+        # Handle stale reserved jobs
+        handle_stale_reserved_jobs(pipeline_module, stale_timeout_hours, action="error")
 
 
 def purge_invalid_jobs(JobTable, table):
@@ -327,3 +400,71 @@ def purge_invalid_jobs(JobTable, table):
     logger.info(
         f"\t{invalid_removed} invalid jobs removed for `{dj.utils.to_camel_case(table.table_name)}`"
     )
+
+
+def handle_stale_reserved_jobs(
+    pipeline_module,
+    stale_timeout_hours: int = 24,
+    action: str = "error",
+):
+    """
+    Handle stale reserved jobs by either marking them as errors or removing them.
+    A job is considered stale if it meets BOTH conditions:
+    1. Has been in "reserved" status for longer than the specified time limit (in hours)
+    2. The connection_id associated with the job is no longer active
+
+    Args:
+        pipeline_module: The pipeline module containing the jobs table
+        stale_timeout_hours: Time limit in hours after which a reserved job is considered stale
+        action: What to do with stale jobs:
+            - "error" (default): Mark stale jobs as errors
+            - "remove": Remove stale jobs
+            - None: Return the stale jobs table without modifying them
+
+    Returns:
+        None if action is "error" or "remove"
+        dj.Table containing stale jobs if action is None
+    """
+    if stale_timeout_hours <= 0:
+        return None if action is not None else pipeline_module.schema.jobs & "false"
+
+    stale_jobs = (
+        pipeline_module.schema.jobs.proj(
+            ..., elapsed_hours="TIMESTAMPDIFF(HOUR, timestamp, NOW())"
+        )
+        & 'status = "reserved"'
+        & f"elapsed_hours > {stale_timeout_hours}"
+    )
+
+    current_connections = [
+        v[0]
+        for v in pipeline_module.schema.connection.query(
+            "SELECT id FROM information_schema.processlist WHERE id <> CONNECTION_ID() ORDER BY id"
+        )
+    ]
+
+    if current_connections:
+        current_connections = f'({", ".join([str(c) for c in current_connections])})'
+        stale_jobs &= f"connection_id NOT IN {current_connections}"
+
+    if action is None:
+        return stale_jobs
+    elif action == "remove":
+        (pipeline_module.schema.jobs & stale_jobs.fetch("KEY")).delete()
+    elif action == "error":
+        schema_name = pipeline_module.schema.database
+        error_message = (
+            "Stale reserved job (process crashed or terminated without error)"
+        )
+        for table_name, job_key in zip(*stale_jobs.fetch("table_name", "key")):
+            pipeline_module.schema.jobs.error(
+                table_name, job_key, error_message=error_message
+            )
+            full_table_name = f"`{schema_name}`.`{table_name}`"
+            logger.debug(
+                f"Error making {job_key} -> {full_table_name} - {error_message}"
+            )
+    else:
+        raise ValueError(
+            f"Invalid action: {action}, must be 'error', 'remove', or None"
+        )
