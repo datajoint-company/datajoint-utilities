@@ -39,16 +39,27 @@ class RegisteredWorker(dj.Manual):
         """
 
     @classmethod
-    def get_workers_progress(cls, worker_name=None, process_name=None):
+    def get_workers_progress(cls, worker_name: str = None, process_name: str = None) -> pd.DataFrame:
         """
-        Return the operation progress for all registered workers (jobs status for each AutoPopulate process)
+        Get the operation progress for all registered workers, showing job status for each AutoPopulate process.
+
+        This method aggregates information about:
+        - Total and incomplete entries in key_source tables
+        - Number of reserved, error, and ignored jobs
+        - Remaining jobs to be processed
 
         Args:
-            worker_name (str): name of the worker (optionally restrict by worker_name)
-            process_name (str): name of the process (optionally restrict by process_name)
+            worker_name (str, optional): Filter results by specific worker name. Defaults to None.
+            process_name (str, optional): Filter results by specific process name. Defaults to None.
 
         Returns:
-            pandas DataFrame of workers jobs status
+            pd.DataFrame: DataFrame containing workflow status with columns:
+                - total: Total number of entries in key_source
+                - incomplete: Number of incomplete entries
+                - reserved: Number of reserved jobs
+                - error: Number of error jobs
+                - ignore: Number of ignored jobs
+                - remaining: Number of remaining jobs to process
         """
         restriction = {}
         if worker_name:
@@ -139,9 +150,21 @@ class RegisteredWorker(dj.Manual):
         return workflow_status
 
     @classmethod
-    def get_incomplete_key_source_sql(cls, key_source_sql, target_full_table_name):
+    def get_incomplete_key_source_sql(cls, key_source_sql: str, target_full_table_name: str) -> tuple[str, str]:
         """
-        From `key_source_sql`, build a SQL statement to find incomplete key_source entries in the target table
+        Build a SQL statement to find incomplete key_source entries in the target table.
+
+        This method constructs a SQL query that identifies entries in the key_source that
+        have not yet been processed into the target table.
+
+        Args:
+            key_source_sql (str): Original SQL statement for the key_source of the table
+            target_full_table_name (str): Full table name of the target table (including schema)
+
+        Returns:
+            tuple[str, str]: A tuple containing:
+                - SQL statement for total key_source entries
+                - SQL statement for incomplete key_source entries
         """
 
         def _rename_attributes(table, props):
@@ -190,16 +213,26 @@ class RegisteredWorker(dj.Manual):
         key_source_sql: str,
         target_full_table_name: str,
         andlist_restriction: AndList = None,
-        return_sql=False,
-    ):
+        return_sql: bool = False
+    ) -> tuple[int, int] | tuple[str, str]:
         """
-        From `key_source_sql`, count the total and incomplete key_source entries in the target table
+        Count total and incomplete key_source entries in the target table.
+
+        This method executes SQL queries to count:
+        1. Total number of entries in the key_source
+        2. Number of entries that haven't been processed into the target table
+
         Args:
             key_source_sql (str): SQL statement for the key_source of the table
-            target_full_table_name (str): full table name of the target table
-            andlist_restriction (list|AndList): list of additional restrictions to be added to the key_source_sql
-             - the `restriction` property of QueryExpression - e.g. (table & key).restriction
-            return_sql (bool): if True, return the SQL statement instead of the count
+            target_full_table_name (str): Full table name of the target table
+            andlist_restriction (AndList, optional): Additional restrictions to add to the queries. Defaults to None.
+            return_sql (bool, optional): If True, return SQL statements instead of counts. Defaults to False.
+
+        Returns:
+            tuple[int, int] | tuple[str, str]: If return_sql is False:
+                - (total_count, incomplete_count)
+              If return_sql is True:
+                - (total_sql, incomplete_sql)
         """
         incomplete_sql = cls.get_incomplete_key_source_sql(
             key_source_sql, target_full_table_name

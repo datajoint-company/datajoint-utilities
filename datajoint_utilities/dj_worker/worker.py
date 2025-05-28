@@ -57,7 +57,7 @@ RETURN_SUCCESS_COUNT = dj.__version__ > "0.14.0"
 
 class DataJointWorker:
     """
-    A decorator class for running and managing the populate jobs.
+    A decorator class for running and managing DataJoint populate jobs.
 
     The worker runs in a configurable loop that continues until one of these conditions is met:
     1. Run duration exceeded: If run_duration > 0 and elapsed time > run_duration
@@ -82,16 +82,16 @@ class DataJointWorker:
 
     def __init__(
         self,
-        worker_name,
-        worker_schema_name,
+        worker_name: str,
+        worker_schema_name: str,
         *,
-        run_duration=-1,
-        sleep_duration=60,
-        max_idled_cycle=-1,
-        autoclear_error_patterns=[],
-        db_prefix=[""],
-        stale_timeout_hours=24,
-        remove_stale_reserved_jobs=None,  # For backward compatibility
+        run_duration: int = -1,
+        sleep_duration: int = 60,
+        max_idled_cycle: int = -1,
+        autoclear_error_patterns: list[str] = [],
+        db_prefix: list[str] = [""],
+        stale_timeout_hours: int = 24,
+        remove_stale_reserved_jobs: bool = None,  # For backward compatibility
     ):
         """
         Initialize a DataJoint worker to manage and execute pipeline processes.
@@ -103,15 +103,15 @@ class DataJointWorker:
         4. Logging worker activities and errors
 
         Args:
-            worker_name: Unique identifier for this worker instance
-            worker_schema_name: Name of the schema where worker-related tables are stored
-            run_duration: Maximum runtime in seconds (-1 for unlimited)
-            sleep_duration: Time to wait between processing cycles in seconds
-            max_idled_cycle: Maximum number of consecutive cycles with no successful jobs (-1 for unlimited)
-            autoclear_error_patterns: List of error message patterns to automatically clear
-            db_prefix: Prefix(es) for database names when logging errors
-            stale_timeout_hours: Time in hours after which a reserved job is considered stale
-            remove_stale_reserved_jobs: [DEPRECATED] Use stale_timeout_hours instead
+            worker_name (str): Unique identifier for this worker instance
+            worker_schema_name (str): Name of the schema where worker-related tables are stored
+            run_duration (int, optional): Maximum runtime in seconds (-1 for unlimited). Defaults to -1.
+            sleep_duration (int, optional): Time to wait between processing cycles in seconds. Defaults to 60.
+            max_idled_cycle (int, optional): Maximum number of consecutive cycles with no successful jobs (-1 for unlimited). Defaults to -1.
+            autoclear_error_patterns (list[str], optional): List of error message patterns to automatically clear. Defaults to [].
+            db_prefix (list[str], optional): Prefix(es) for database names when logging errors. Defaults to [""].
+            stale_timeout_hours (int, optional): Time in hours after which a reserved job is considered stale. Defaults to 24.
+            remove_stale_reserved_jobs (bool, optional): [DEPRECATED] Use stale_timeout_hours instead. Defaults to None.
 
         Note:
             The worker maintains its own schema with tables for:
@@ -156,9 +156,29 @@ class DataJointWorker:
     def __call__(self, process, **kwargs):
         self.add_step(process, **kwargs)
 
-    def add_step(self, callable, position_=None, **kwargs):
+    def add_step(self, callable: callable, position_: int = None, **kwargs) -> None:
         """
-        Add a new process to the list of processes to be executed by this worker
+        Add a new process to the list of processes to be executed by this worker.
+
+        This method supports two types of processes:
+        1. DataJoint AutoPopulate tables
+        2. Custom functions or methods
+
+        Args:
+            callable (callable): The process to add. Can be either:
+                - A DataJoint AutoPopulate table
+                - A function or method
+            position_ (int, optional): Position to insert the process in the execution order.
+                If None, appends to the end. Defaults to None.
+            **kwargs: Additional keyword arguments to pass to the process when executed.
+
+        Raises:
+            NotImplemented: If the callable is neither a DataJoint table nor a function/method.
+            AssertionError: If a DataJoint table is not of type AutoPopulate.
+
+        Note:
+            - For DataJoint tables, the schema must be accessible
+            - Adding a process resets the worker's registration status
         """
         index = len(self._processes_to_run) if position_ is None else position_
         if is_djtable(callable):
@@ -181,9 +201,30 @@ class DataJointWorker:
             )
         self._is_registered = False
 
-    def register_worker(self):
+    def register_worker(self) -> None:
         """
-        Register the worker and its associated processes into the RegisteredWorker table
+        Register the worker and its associated processes in the RegisteredWorker table.
+
+        This method performs the following operations:
+        1. Creates process entries for each registered process, including:
+           - Process name and index
+           - Full table name (for DataJoint tables)
+           - Key source SQL (for DataJoint tables)
+           - Process configuration and arguments
+        2. Generates a unique configuration UUID for the worker
+        3. Registers the worker with its configuration in the database
+        4. Handles transaction safety and error logging
+
+        The registration process ensures that:
+        - Each worker has a unique configuration
+        - All processes are properly tracked
+        - Configuration changes are detected
+        - Worker state is persisted in the database
+
+        Note:
+            - If the worker is already registered with the same configuration, this method does nothing
+            - If the worker exists with a different configuration, the old registration is deleted
+            - All operations are performed within a transaction for data consistency
         """
         if self._is_registered:
             return
@@ -241,9 +282,24 @@ class DataJointWorker:
         self._is_registered = True
         logger.info(f"Worker registered: {self.name}")
 
-    def _run_once(self):
+    def _run_once(self) -> int:
         """
-        Run all processes in order, once
+        Execute all registered processes in sequence, once.
+
+        This method:
+        1. Logs the start of each process
+        2. Executes DataJoint populate operations or custom functions
+        3. Handles any errors that occur during execution
+        4. Cleans up stale jobs and error patterns
+        5. Manages log rotation
+
+        Returns:
+            int: Number of successfully processed jobs. Returns 1 if RETURN_SUCCESS_COUNT is False.
+
+        Note:
+            - For DataJoint tables, uses populate() with standard settings
+            - For functions, executes directly and logs any exceptions
+            - Cleans up old logs after execution
         """
         success_count = 0 if RETURN_SUCCESS_COUNT else 1
         for process_type, process, kwargs in self._processes_to_run:
@@ -276,7 +332,7 @@ class DataJointWorker:
 
         return success_count
 
-    def _keep_running(self):
+    def _keep_running(self) -> bool:
         """
         Determine whether the worker should continue running based on configured limits.
 
@@ -294,15 +350,48 @@ class DataJointWorker:
         exceed_max_idled_cycle = 0 < self._max_idled_cycle < self._idled_cycle_count
         return not (exceed_run_duration or exceed_max_idled_cycle)
 
-    def _purge_invalid_jobs(self):
+    def _purge_invalid_jobs(self) -> None:
+        """
+        Remove invalid or outdated jobs from the job tables.
+
+        This method checks and removes jobs that are:
+        1. No longer in the key_source (e.g., upstream entries were deleted)
+        2. Already present in the target table (e.g., completed by another process)
+
+        Note:
+            - This is a potentially time-consuming operation
+            - Should be run infrequently
+            - Logs the number of invalid jobs removed
+        """
         for process_type, process, _ in self._processes_to_run:
             if process_type == "dj_table":
                 vmod = self._pipeline_modules[process.database]
                 purge_invalid_jobs(vmod.schema.jobs, process)
 
-    def run(self):
+    def run(self) -> None:
         """
-        Run all processes in a continual loop until the terminating condition is met (see "_keep_running()")
+        Run all registered processes in a continuous loop until stop conditions are met.
+
+        This method:
+        1. Registers the worker if not already registered
+        2. Enters a loop that:
+           - Executes all processes
+           - Handles errors
+           - Cleans up stale jobs
+           - Logs activities
+           - Sleeps between cycles
+        3. Continues until stop conditions are met
+        4. Purges invalid jobs before stopping
+
+        The worker will stop when:
+        - Run duration is exceeded (if configured)
+        - Max idle cycles are exceeded (if configured)
+        - An unhandled exception occurs
+
+        Note:
+            - The worker completes the current cycle before stopping
+            - All operations are logged
+            - Invalid jobs are purged before stopping
         """
         self.register_worker()
 
