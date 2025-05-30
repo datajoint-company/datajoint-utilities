@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datajoint-utilities"
-version = "0.6.0"
+version = "0.6.1"
 description = "A general purpose repository containing all generic tools/utilities surrounding the DataJoint ecosystem"
 requires-python = ">=3.9, <3.12"
 license = { file = "LICENSE" }
