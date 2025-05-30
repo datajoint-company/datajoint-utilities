@@ -52,8 +52,6 @@ _populate_settings = {
     "suppress_errors": True,
 }
 
-RETURN_SUCCESS_COUNT = dj.__version__ > "0.14.0"
-
 
 class DataJointWorker:
     """
@@ -128,7 +126,7 @@ class DataJointWorker:
         self._autoclear_error_patterns = autoclear_error_patterns
         self._run_duration = run_duration if run_duration is not None else -1
         self._sleep_duration = sleep_duration
-        self._max_idled_cycle = max_idled_cycle if RETURN_SUCCESS_COUNT else -1
+        self._max_idled_cycle = max_idled_cycle
         self._db_prefix = [db_prefix] if isinstance(db_prefix, str) else db_prefix
 
         # Handle backward compatibility
@@ -294,14 +292,9 @@ class DataJointWorker:
         5. Manages log rotation
 
         Returns:
-            int: Number of processed jobs (success + error). Returns 1 if RETURN_SUCCESS_COUNT is False.
-
-        Note:
-            - For DataJoint tables, uses populate() with standard settings
-            - For functions, executes directly and logs any exceptions
-            - Cleans up old logs after execution
+            int: Number of processed jobs (success + error)
         """
-        success_count = 0 if RETURN_SUCCESS_COUNT else 1
+        success_count = 0
         for process_type, process, kwargs in self._processes_to_run:
             WorkerLog.log_process_job(
                 process, worker_name=self.name, db_prefix=self._db_prefix
