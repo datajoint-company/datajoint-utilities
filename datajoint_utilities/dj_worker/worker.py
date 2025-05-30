@@ -294,7 +294,7 @@ class DataJointWorker:
         5. Manages log rotation
 
         Returns:
-            int: Number of successfully processed jobs. Returns 1 if RETURN_SUCCESS_COUNT is False.
+            int: Number of processed jobs (success + error). Returns 1 if RETURN_SUCCESS_COUNT is False.
 
         Note:
             - For DataJoint tables, uses populate() with standard settings
@@ -309,7 +309,7 @@ class DataJointWorker:
             if process_type == "dj_table":
                 status = process.populate(**{**_populate_settings, **kwargs})
                 if isinstance(status, dict):
-                    success_count += status["success_count"]
+                    success_count += status["success_count"] + len(status["error_list"])
             elif process_type == "function":
                 try:
                     process(**kwargs)
