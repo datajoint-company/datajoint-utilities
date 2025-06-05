@@ -25,7 +25,7 @@ def migrate_schema(
     :param origin_schema - schema to transfer the data from
     :param destination_schema - schema to transfer the data to
     :param restriction - DataJoint restriction to apply to the tables in origin_schema for restricted data transfer
-    :param table_block_list - skip data transfer for these tables
+    :param table_block_list - skip data transfer for these tables (e.g. ['Session', 'Probe.Electrode'])
     :param allow_missing_destination_tables - allow for missing tables in the destination_schema compared to the origin_schema
     :param force_fetch - bool - force the fetch and reinsert instead of server side transfer
     :param batch_size: int - do the data transfer in batch - with specified batch_size
@@ -36,6 +36,7 @@ def migrate_schema(
 
     tbl_names = [
         tbl_name.split(".")[-1] for tbl_name in dj.Diagram(origin_schema).topo_sort()
+        if tbl_name.split(".")[0].strip("`") == origin_schema.schema.database
     ]
     tbl_names = [
         ".".join(
