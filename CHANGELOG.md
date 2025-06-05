@@ -2,7 +2,17 @@
 
 Observes [Semantic Versioning](https://semver.org/spec/v2.0.0.html) standard and [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) convention.
 
-## [0.6.0] - 2024-04-09
+
+## [0.6.2] - 2025-06-04
+
+- Fix - bugfix data copy with DataJoint's latest `topo_sort()`
+
+## [0.6.1] - 2025-05-10
+
+- Fix - improve "idle cycles" logic for DataJointWorker
+
+
+## [0.6.0] - 2025-04-09
 
 ### Added
 - New stale jobs handling functionality in worker:
