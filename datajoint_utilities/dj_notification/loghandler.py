@@ -28,12 +28,16 @@ class PopulateHandler(StreamHandler):
         """
 
         StreamHandler.__init__(self)
-        assert all(hasattr(notifier, "notify") for notifier in notifiers)
+        for notifier in notifiers:
+            if not hasattr(notifier, "notify"):
+                raise ValueError(f"Not a valid `Notifier` - missing `notify` method")
         self.notifiers = notifiers
         self.tables_to_notify: dict = {}
-        if full_table_names:
+        if full_table_names is not None:
             for full_table_name in full_table_names:
                 self.watch_table(full_table_name, on_start, on_success, on_error)
+        else:
+            self.watch_table(on_start, on_success, on_error)
 
     def watch_table(self, full_table_name: str, on_start: bool = True, on_success: bool = True, on_error: bool = True) -> None:
         """

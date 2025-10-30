@@ -34,8 +34,10 @@ import time
 import warnings
 from datetime import datetime
 import datajoint as dj
+from typing import List, Any, Optional, Dict
 
 from .. import dict_to_uuid
+from ..dj_notification.loghandler import PopulateHandler
 from .worker_schema import (
     RegisteredWorker,
     WorkerLog,
@@ -90,6 +92,8 @@ class DataJointWorker:
         db_prefix: list[str] = [""],
         stale_timeout_hours: int = 24,
         remove_stale_reserved_jobs: bool = None,  # For backward compatibility
+        # Notification parameters
+        notifiers: Optional[List[Any]] = None,
     ):
         """
         Initialize a DataJoint worker to manage and execute pipeline processes.
@@ -110,6 +114,8 @@ class DataJointWorker:
             db_prefix (list[str], optional): Prefix(es) for database names when logging errors. Defaults to [""].
             stale_timeout_hours (int, optional): Time in hours after which a reserved job is considered stale. Defaults to 24.
             remove_stale_reserved_jobs (bool, optional): [DEPRECATED] Use stale_timeout_hours instead. Defaults to None.
+            notifiers (List[Any], optional): List of notification handlers for populate events. Defaults to None.
+            Note: Per-table notification settings are specified in add_step/\__call__.
 
         Note:
             The worker maintains its own schema with tables for:
@@ -150,11 +156,46 @@ class DataJointWorker:
         self._idled_cycle_count = None
         self._run_start_time = None
         self._is_registered = False
+        self._populate_handler = None
 
-    def __call__(self, process, **kwargs):
-        self.add_step(process, **kwargs)
+        if notifiers is not None:
+            self._setup_notifiers(notifiers)
+        
+    def _setup_notifiers(self, notifiers: List[Any]) -> None:
+        """
+        Validate that all notifiers have the required notify method.
+        
+        Raises:
+            ValueError: If any notifier is invalid
+        """
+        for i, notifier in enumerate(notifiers):
+            if not hasattr(notifier, 'notify'):
+                raise ValueError(f"Notifier at index {i} does not have a 'notify' method")
+            if not callable(getattr(notifier, 'notify')):
+                raise ValueError(f"Notifier at index {i} 'notify' attribute is not callable")
 
-    def add_step(self, callable: callable, position_: int = None, **kwargs) -> None:
+        # Remove existing handler to avoid duplicates
+        if self._populate_handler is not None:
+            logger.removeHandler(self._populate_handler)
+
+        self._populate_handler = PopulateHandler(
+            notifiers=notifiers,
+        )
+        # Add handler to DataJoint logger
+        logger.addHandler(self._populate_handler)
+
+    def __call__(self, process, *, notification_kwargs: Optional[Dict[str, bool]] = None, **kwargs):
+        """
+        Register a process step. For AutoPopulate tables, optional per-step notification config
+        can be provided via notification_kwargs. If not provided, the table is not watched.
+
+        :param notification_kwargs: Optional dict with any of {'on_start','on_success','on_error'} set to bool.
+                                     At least one True must be provided to watch; missing keys default to False.
+        """
+        self.add_step(process, notification_kwargs=notification_kwargs, **kwargs)
+
+    def add_step(self, callable: callable, position_: int = None, *, 
+                 notification_kwargs: Optional[Dict[str, bool]] = None, **kwargs) -> None:
         """
         Add a new process to the list of processes to be executed by this worker.
 
@@ -168,6 +209,9 @@ class DataJointWorker:
                 - A function or method
             position_ (int, optional): Position to insert the process in the execution order.
                 If None, appends to the end. Defaults to None.
+            notification_kwargs (dict, optional): Per-table notification settings. Use any subset of
+                {'on_start','on_success','on_error'} with boolean values. Missing keys default to False.
+                If not provided, the table is not watched. At least one True must be supplied to watch.
             **kwargs: Additional keyword arguments to pass to the process when executed.
 
         Raises:
@@ -177,6 +221,7 @@ class DataJointWorker:
         Note:
             - For DataJoint tables, the schema must be accessible
             - Adding a process resets the worker's registration status
+            - Notification settings only apply to AutoPopulate tables
         """
         index = len(self._processes_to_run) if position_ is None else position_
         if is_djtable(callable):
@@ -186,12 +231,29 @@ class DataJointWorker:
             schema_name = callable.database
             if not schema_name:
                 return
+            
+            # Handle notification settings for AutoPopulate tables
+            if self._populate_handler and notification_kwargs is not None:
+                # Filter to allowed keys and default missing to False; warn on unknown keys
+                allowed_keys = {"on_start", "on_success", "on_error"}
+                invalid_keys = set(notification_kwargs.keys()) - allowed_keys
+                if invalid_keys:
+                    logger.warning(
+                        f"Ignoring unknown notification keys {sorted(invalid_keys)}; allowed keys are {sorted(allowed_keys)}"
+                    )
+                flags = {k: bool(notification_kwargs.get(k, False)) for k in allowed_keys}
+                # Require at least one True to watch
+                if any(flags.values()):
+                    full_table_name = callable.full_table_name
+                    self._populate_handler.watch_table(full_table_name, **flags)
+            
             self._processes_to_run.insert(index, ("dj_table", callable, kwargs))
             if schema_name not in self._pipeline_modules:
                 self._pipeline_modules[schema_name] = dj.create_virtual_module(
                     schema_name, schema_name
                 )
         elif inspect.isfunction(callable) or inspect.ismethod(callable):
+            # Functions don't support notifications, ignore notification parameters
             self._processes_to_run.insert(index, ("function", callable, kwargs))
         else:
             raise NotImplemented(
@@ -401,6 +463,11 @@ class DataJointWorker:
             time.sleep(self._sleep_duration)
 
         self._purge_invalid_jobs()
+        
+        # Clean up notification handler
+        if self._populate_handler:
+            logger.removeHandler(self._populate_handler)
+        
         logger.info(f"Stopping DataJoint Worker: {self.name}")
 
 
