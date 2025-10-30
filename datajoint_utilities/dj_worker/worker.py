@@ -30,6 +30,7 @@ Example:
 """
 
 import inspect
+import logging
 import time
 import warnings
 from datetime import datetime
@@ -181,21 +182,36 @@ class DataJointWorker:
         self._populate_handler = PopulateHandler(
             notifiers=notifiers,
         )
+        # Log level needs to be DEBUG so PopulateHandler can see it
+        # The logic below is to preserve the original logger level and add a filter to the other handlers
+        # (a bit convoluted, suggestions welcome)
+        
+        # Snapshot original logger level and enable DEBUG so PopulateHandler can see it
+        original_logger_level = logger.level
+        logger.setLevel(logging.DEBUG)
+        self._populate_handler.setLevel(logging.DEBUG)
         # Add handler to DataJoint logger
         logger.addHandler(self._populate_handler)
+        self._handler_level_filters = {}
+        for h in logger.handlers:
+            if h is self._populate_handler:
+                continue
+            _f = _MinLevelFilter(original_logger_level)
+            h.addFilter(_f)
+            self._handler_level_filters[h] = _f
 
-    def __call__(self, process, *, notification_kwargs: Optional[Dict[str, bool]] = None, **kwargs):
+    def __call__(self, process, *, notif_kwargs: Optional[Dict[str, bool]] = None, **kwargs):
         """
         Register a process step. For AutoPopulate tables, optional per-step notification config
-        can be provided via notification_kwargs. If not provided, the table is not watched.
+        can be provided via notif_kwargs. If not provided, the table is not watched.
 
-        :param notification_kwargs: Optional dict with any of {'on_start','on_success','on_error'} set to bool.
+        :param notif_kwargs: Optional dict with any of {'on_start','on_success','on_error'} set to bool.
                                      At least one True must be provided to watch; missing keys default to False.
         """
-        self.add_step(process, notification_kwargs=notification_kwargs, **kwargs)
+        self.add_step(process, notif_kwargs=notif_kwargs, **kwargs)
 
     def add_step(self, callable: callable, position_: int = None, *, 
-                 notification_kwargs: Optional[Dict[str, bool]] = None, **kwargs) -> None:
+                 notif_kwargs: Optional[Dict[str, bool]] = None, **kwargs) -> None:
         """
         Add a new process to the list of processes to be executed by this worker.
 
@@ -209,7 +225,7 @@ class DataJointWorker:
                 - A function or method
             position_ (int, optional): Position to insert the process in the execution order.
                 If None, appends to the end. Defaults to None.
-            notification_kwargs (dict, optional): Per-table notification settings. Use any subset of
+            notif_kwargs (dict, optional): Per-table notification settings. Use any subset of
                 {'on_start','on_success','on_error'} with boolean values. Missing keys default to False.
                 If not provided, the table is not watched. At least one True must be supplied to watch.
             **kwargs: Additional keyword arguments to pass to the process when executed.
@@ -233,15 +249,15 @@ class DataJointWorker:
                 return
             
             # Handle notification settings for AutoPopulate tables
-            if self._populate_handler and notification_kwargs is not None:
+            if self._populate_handler and notif_kwargs is not None:
                 # Filter to allowed keys and default missing to False; warn on unknown keys
                 allowed_keys = {"on_start", "on_success", "on_error"}
-                invalid_keys = set(notification_kwargs.keys()) - allowed_keys
+                invalid_keys = set(notif_kwargs.keys()) - allowed_keys
                 if invalid_keys:
                     logger.warning(
                         f"Ignoring unknown notification keys {sorted(invalid_keys)}; allowed keys are {sorted(allowed_keys)}"
                     )
-                flags = {k: bool(notification_kwargs.get(k, False)) for k in allowed_keys}
+                flags = {k: bool(notif_kwargs.get(k, False)) for k in allowed_keys}
                 # Require at least one True to watch
                 if any(flags.values()):
                     full_table_name = callable.full_table_name
@@ -463,11 +479,6 @@ class DataJointWorker:
             time.sleep(self._sleep_duration)
 
         self._purge_invalid_jobs()
-        
-        # Clean up notification handler
-        if self._populate_handler:
-            logger.removeHandler(self._populate_handler)
-        
         logger.info(f"Stopping DataJoint Worker: {self.name}")
 
 
@@ -617,3 +628,13 @@ def handle_stale_reserved_jobs(
         raise ValueError(
             f"Invalid action: {action}, must be 'error', 'remove', or None"
         )
+
+
+class _MinLevelFilter(logging.Filter):
+    """Filter that keeps records at or above a minimum level."""
+    def __init__(self, min_level: int) -> None:
+        super().__init__()
+        self.min_level = min_level
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno >= self.min_level
