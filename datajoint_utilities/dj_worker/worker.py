@@ -35,7 +35,7 @@ import time
 import warnings
 from datetime import datetime
 import datajoint as dj
-from typing import List, Any, Optional, Dict
+from typing import List, Any, Optional
 
 from .. import dict_to_uuid
 from ..dj_notification.loghandler import PopulateHandler
@@ -200,18 +200,18 @@ class DataJointWorker:
             h.addFilter(_f)
             self._handler_level_filters[h] = _f
 
-    def __call__(self, process, *, notif_kwargs: Optional[Dict[str, bool]] = None, **kwargs):
+    def __call__(self, process, *, notify_on: Optional[List[str]] = None, **kwargs):
         """
         Register a process step. For AutoPopulate tables, optional per-step notification config
-        can be provided via notif_kwargs. If not provided, the table is not watched.
+        can be provided via notify_on. If not provided, the table is not watched.
 
-        :param notif_kwargs: Optional dict with any of {'on_start','on_success','on_error'} set to bool.
-                                     At least one True must be provided to watch; missing keys default to False.
+        :param notify_on: Optional list of status strings to notify on: ['start', 'success', 'error'].
+                          Empty list or None means don't watch. Invalid statuses are ignored.
         """
-        self.add_step(process, notif_kwargs=notif_kwargs, **kwargs)
+        self.add_step(process, notify_on=notify_on, **kwargs)
 
     def add_step(self, callable: callable, position_: int = None, *, 
-                 notif_kwargs: Optional[Dict[str, bool]] = None, **kwargs) -> None:
+                 notify_on: Optional[List[str]] = None, **kwargs) -> None:
         """
         Add a new process to the list of processes to be executed by this worker.
 
@@ -225,9 +225,8 @@ class DataJointWorker:
                 - A function or method
             position_ (int, optional): Position to insert the process in the execution order.
                 If None, appends to the end. Defaults to None.
-            notif_kwargs (dict, optional): Per-table notification settings. Use any subset of
-                {'on_start','on_success','on_error'} with boolean values. Missing keys default to False.
-                If not provided, the table is not watched. At least one True must be supplied to watch.
+            notify_on (List[str], optional): List of status strings to notify on: ['start', 'success', 'error'].
+                Empty list or None means don't watch. Invalid statuses are ignored. Only applies to AutoPopulate tables.
             **kwargs: Additional keyword arguments to pass to the process when executed.
 
         Raises:
@@ -249,16 +248,22 @@ class DataJointWorker:
                 return
             
             # Handle notification settings for AutoPopulate tables
-            if self._populate_handler and notif_kwargs is not None:
-                # Filter to allowed keys and default missing to False; warn on unknown keys
-                allowed_keys = {"on_start", "on_success", "on_error"}
-                invalid_keys = set(notif_kwargs.keys()) - allowed_keys
-                if invalid_keys:
+            if self._populate_handler and notify_on is not None and len(notify_on) > 0:
+                # Convert list of status strings to dict format for watch_table
+                valid_statuses = {"start", "success", "error"}
+                notify_set = {s.lower() for s in notify_on if isinstance(s, str)}
+                invalid_statuses = notify_set - valid_statuses
+                if invalid_statuses:
                     logger.warning(
-                        f"Ignoring unknown notification keys {sorted(invalid_keys)}; allowed keys are {sorted(allowed_keys)}"
+                        f"Ignoring invalid notification statuses {sorted(invalid_statuses)}; valid statuses are {sorted(valid_statuses)}"
                     )
-                flags = {k: bool(notif_kwargs.get(k, False)) for k in allowed_keys}
-                # Require at least one True to watch
+                # Build flags dict: True for statuses in list, False otherwise
+                flags = {
+                    "on_start": "start" in notify_set,
+                    "on_success": "success" in notify_set,
+                    "on_error": "error" in notify_set,
+                }
+                # Only watch if at least one status is requested
                 if any(flags.values()):
                     full_table_name = callable.full_table_name
                     self._populate_handler.watch_table(full_table_name, **flags)
