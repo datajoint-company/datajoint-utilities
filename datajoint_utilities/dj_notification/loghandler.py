@@ -71,9 +71,7 @@ class PopulateHandler(StreamHandler):
             "Error making": "ERROR",
         }[status]
 
-        if full_table_name not in self.tables_to_notify:
-            return
-        if not self.tables_to_notify[full_table_name][status.lower()]:
+        if self.tables_to_notify.get(full_table_name, {}).get(status.lower(), False):
             return
 
         try:

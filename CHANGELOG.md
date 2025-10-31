@@ -3,6 +3,15 @@
 Observes [Semantic Versioning](https://semver.org/spec/v2.0.0.html) standard and [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) convention.
 
 
+## [0.7.0] - 2025-10-31
+
+### Added
+- PopulateHandler now supports per-table notification configuration with dynamic table addition
+- DataJointWorker integration with notification system:
+  - Optional notifiers parameter to enable notifications
+  - Per-table notification control via `notify_on` parameter in `add_step()` and `__call__()`
+  - Automatic DEBUG log level management for PopulateHandler visibility
+
 ## [0.6.2] - 2025-06-04
 
 - Fix - bugfix data copy with DataJoint's latest `topo_sort()`
