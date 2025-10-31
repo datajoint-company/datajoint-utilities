@@ -36,8 +36,6 @@ class PopulateHandler(StreamHandler):
         if full_table_names is not None:
             for full_table_name in full_table_names:
                 self.watch_table(full_table_name, on_start, on_success, on_error)
-        else:
-            self.watch_table(on_start, on_success, on_error)
 
     def watch_table(self, full_table_name: str, on_start: bool = True, on_success: bool = True, on_error: bool = True) -> None:
         """
