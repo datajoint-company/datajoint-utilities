@@ -277,7 +277,7 @@ class DataJointWorker:
             # Functions don't support notifications, ignore notification parameters
             self._processes_to_run.insert(index, ("function", callable, kwargs))
         else:
-            raise NotImplemented(
+            raise NotImplementedError(
                 f"Unable to handle processing step of type {type(callable)}"
             )
         self._is_registered = False
