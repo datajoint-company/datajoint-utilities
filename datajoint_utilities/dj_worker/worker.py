@@ -30,12 +30,15 @@ Example:
 """
 
 import inspect
+import logging
 import time
 import warnings
 from datetime import datetime
 import datajoint as dj
+from typing import List, Any, Optional
 
 from .. import dict_to_uuid
+from ..dj_notification.loghandler import PopulateHandler
 from .worker_schema import (
     RegisteredWorker,
     WorkerLog,
@@ -90,6 +93,8 @@ class DataJointWorker:
         db_prefix: list[str] = [""],
         stale_timeout_hours: int = 24,
         remove_stale_reserved_jobs: bool = None,  # For backward compatibility
+        # Notification parameters
+        notifiers: Optional[List[Any]] = None,
     ):
         """
         Initialize a DataJoint worker to manage and execute pipeline processes.
@@ -110,6 +115,8 @@ class DataJointWorker:
             db_prefix (list[str], optional): Prefix(es) for database names when logging errors. Defaults to [""].
             stale_timeout_hours (int, optional): Time in hours after which a reserved job is considered stale. Defaults to 24.
             remove_stale_reserved_jobs (bool, optional): [DEPRECATED] Use stale_timeout_hours instead. Defaults to None.
+            notifiers (List[Any], optional): List of notification handlers for populate events. Defaults to None.
+            Note: Per-table notification settings are specified in add_step/\__call__.
 
         Note:
             The worker maintains its own schema with tables for:
@@ -150,11 +157,61 @@ class DataJointWorker:
         self._idled_cycle_count = None
         self._run_start_time = None
         self._is_registered = False
+        self._populate_handler = None
 
-    def __call__(self, process, **kwargs):
-        self.add_step(process, **kwargs)
+        if notifiers is not None:
+            self._setup_notifiers(notifiers)
+        
+    def _setup_notifiers(self, notifiers: List[Any]) -> None:
+        """
+        Validate that all notifiers have the required notify method.
+        
+        Raises:
+            ValueError: If any notifier is invalid
+        """
+        for i, notifier in enumerate(notifiers):
+            if not hasattr(notifier, 'notify'):
+                raise ValueError(f"Notifier at index {i} does not have a 'notify' method")
+            if not callable(getattr(notifier, 'notify')):
+                raise ValueError(f"Notifier at index {i} 'notify' attribute is not callable")
 
-    def add_step(self, callable: callable, position_: int = None, **kwargs) -> None:
+        # Remove existing handler to avoid duplicates
+        if self._populate_handler is not None:
+            logger.removeHandler(self._populate_handler)
+
+        self._populate_handler = PopulateHandler(
+            notifiers=notifiers,
+        )
+        # Log level needs to be DEBUG so PopulateHandler can see it
+        # The logic below is to preserve the original logger level and add a filter to the other handlers
+        # (a bit convoluted, suggestions welcome)
+        
+        # Snapshot original logger level and enable DEBUG so PopulateHandler can see it
+        original_logger_level = logger.level
+        logger.setLevel(logging.DEBUG)
+        self._populate_handler.setLevel(logging.DEBUG)
+        # Add handler to DataJoint logger
+        logger.addHandler(self._populate_handler)
+        self._handler_level_filters = {}
+        for h in logger.handlers:
+            if h is self._populate_handler:
+                continue
+            _f = _MinLevelFilter(original_logger_level)
+            h.addFilter(_f)
+            self._handler_level_filters[h] = _f
+
+    def __call__(self, process, *, notify_on: Optional[List[str]] = None, **kwargs):
+        """
+        Register a process step. For AutoPopulate tables, optional per-step notification config
+        can be provided via notify_on. If not provided, the table is not watched.
+
+        :param notify_on: Optional list of status strings to notify on: ['start', 'success', 'error'].
+                          Empty list or None means don't watch. Invalid statuses are ignored.
+        """
+        self.add_step(process, notify_on=notify_on, **kwargs)
+
+    def add_step(self, callable: callable, position_: int = None, *, 
+                 notify_on: Optional[List[str]] = None, **kwargs) -> None:
         """
         Add a new process to the list of processes to be executed by this worker.
 
@@ -168,6 +225,8 @@ class DataJointWorker:
                 - A function or method
             position_ (int, optional): Position to insert the process in the execution order.
                 If None, appends to the end. Defaults to None.
+            notify_on (List[str], optional): List of status strings to notify on: ['start', 'success', 'error'].
+                Empty list or None means don't watch. Invalid statuses are ignored. Only applies to AutoPopulate tables.
             **kwargs: Additional keyword arguments to pass to the process when executed.
 
         Raises:
@@ -177,6 +236,7 @@ class DataJointWorker:
         Note:
             - For DataJoint tables, the schema must be accessible
             - Adding a process resets the worker's registration status
+            - Notification settings only apply to AutoPopulate tables
         """
         index = len(self._processes_to_run) if position_ is None else position_
         if is_djtable(callable):
@@ -186,15 +246,38 @@ class DataJointWorker:
             schema_name = callable.database
             if not schema_name:
                 return
+            
+            # Handle notification settings for AutoPopulate tables
+            if self._populate_handler and notify_on is not None and len(notify_on) > 0:
+                # Convert list of status strings to dict format for watch_table
+                valid_statuses = {"start", "success", "error"}
+                notify_set = {s.lower() for s in notify_on if isinstance(s, str)}
+                invalid_statuses = notify_set - valid_statuses
+                if invalid_statuses:
+                    logger.warning(
+                        f"Ignoring invalid notification statuses {sorted(invalid_statuses)}; valid statuses are {sorted(valid_statuses)}"
+                    )
+                # Build flags dict: True for statuses in list, False otherwise
+                flags = {
+                    "on_start": "start" in notify_set,
+                    "on_success": "success" in notify_set,
+                    "on_error": "error" in notify_set,
+                }
+                # Only watch if at least one status is requested
+                if any(flags.values()):
+                    full_table_name = callable.full_table_name
+                    self._populate_handler.watch_table(full_table_name, **flags)
+            
             self._processes_to_run.insert(index, ("dj_table", callable, kwargs))
             if schema_name not in self._pipeline_modules:
                 self._pipeline_modules[schema_name] = dj.create_virtual_module(
                     schema_name, schema_name
                 )
         elif inspect.isfunction(callable) or inspect.ismethod(callable):
+            # Functions don't support notifications, ignore notification parameters
             self._processes_to_run.insert(index, ("function", callable, kwargs))
         else:
-            raise NotImplemented(
+            raise NotImplementedError(
                 f"Unable to handle processing step of type {type(callable)}"
             )
         self._is_registered = False
@@ -550,3 +633,13 @@ def handle_stale_reserved_jobs(
         raise ValueError(
             f"Invalid action: {action}, must be 'error', 'remove', or None"
         )
+
+
+class _MinLevelFilter(logging.Filter):
+    """Filter that keeps records at or above a minimum level."""
+    def __init__(self, min_level: int) -> None:
+        super().__init__()
+        self.min_level = min_level
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno >= self.min_level
