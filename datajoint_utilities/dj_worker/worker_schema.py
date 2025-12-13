@@ -184,11 +184,6 @@ class RegisteredWorker(dj.Manual):
             full_table_name=target_full_table_name, conn=cls.connection
         )
 
-        try:
-            len(target)
-        except dj.errors.DataJointError:
-            return np.nan, np.nan
-
         parents = target.parents(primary=True, as_objects=True, foreign_key_info=True)
 
         ks_parents = _rename_attributes(*parents[0])
