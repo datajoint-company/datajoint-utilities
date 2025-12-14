@@ -184,11 +184,6 @@ class RegisteredWorker(dj.Manual):
             full_table_name=target_full_table_name, conn=cls.connection
         )
 
-        try:
-            len(target)
-        except dj.errors.DataJointError:
-            return np.nan, np.nan
-
         parents = target.parents(primary=True, as_objects=True, foreign_key_info=True)
 
         ks_parents = _rename_attributes(*parents[0])
@@ -234,6 +229,13 @@ class RegisteredWorker(dj.Manual):
               If return_sql is True:
                 - (total_sql, incomplete_sql)
         """
+        # validate table exists
+        schema_name, table_name = target_full_table_name.split(".")
+        table_exists = cls.connection.query(
+            f"SHOW TABLES FROM {schema_name} LIKE '{table_name.strip('`')}';").fetchall()
+        if not table_exists:
+            return np.nan, np.nan
+
         incomplete_sql = cls.get_incomplete_key_source_sql(
             key_source_sql, target_full_table_name
         )
