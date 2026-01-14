@@ -1,7 +1,17 @@
 import argparse
 import logging
 
-from .worker import RegisteredWorker, WorkerLog, ErrorLog, DataJointWorker, logger
+from .worker import (
+    RegisteredWorker,
+    WorkerLog,
+    ErrorLog,
+    DataJointWorker,
+    logger,
+    # Module-level functions (preferred over deprecated class methods)
+    get_workers_progress,
+    get_key_source_count,
+    get_incomplete_key_source_sql,
+)
 
 
 # arg-parser for usage as CLI

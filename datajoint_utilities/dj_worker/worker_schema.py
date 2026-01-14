@@ -2,6 +2,7 @@ import json
 import os
 import platform
 import traceback
+import warnings
 import pymysql
 import inspect
 import re
@@ -17,6 +18,14 @@ logger = dj.logger
 
 
 class RegisteredWorker(dj.Manual):
+    """
+    Table for tracking registered DataJoint workers and their process configurations.
+
+    Note:
+        The class methods (get_workers_progress, get_key_source_count, get_incomplete_key_source_sql)
+        are deprecated due to connection mutation issues when working with multiple databases.
+        Use the module-level functions instead, which take explicit connection parameters.
+    """
     definition = """
     worker_name: varchar(64)
     ---
@@ -41,166 +50,34 @@ class RegisteredWorker(dj.Manual):
     @classmethod
     def get_workers_progress(cls, worker_name: str = None, process_name: str = None) -> pd.DataFrame:
         """
-        Get the operation progress for all registered workers, showing job status for each AutoPopulate process.
+        DEPRECATED: Use module-level get_workers_progress() instead.
 
-        This method aggregates information about:
-        - Total and incomplete entries in key_source tables
-        - Number of reserved, error, and ignored jobs
-        - Remaining jobs to be processed
-
-        Args:
-            worker_name (str, optional): Filter results by specific worker name. Defaults to None.
-            process_name (str, optional): Filter results by specific process name. Defaults to None.
-
-        Returns:
-            pd.DataFrame: DataFrame containing workflow status with columns:
-                - total: Total number of entries in key_source
-                - incomplete: Number of incomplete entries
-                - reserved: Number of reserved jobs
-                - error: Number of error jobs
-                - ignore: Number of ignored jobs
-                - remaining: Number of remaining jobs to process
+        This method has connection mutation issues when used with multiple databases.
+        Use the module-level function which takes explicit connection parameters.
         """
-        restriction = {}
-        if worker_name:
-            restriction["worker_name"] = worker_name
-        if process_name:
-            restriction["process"] = process_name
-
-        workflow_status = (
-            (
-                (cls.Process & "key_source_sql is not NULL").proj(
-                    "process",
-                    "key_source_sql",
-                    table_name="full_table_name",
-                    total="NULL",
-                    incomplete="NULL",
-                )
-                & restriction
-            )
-            .fetch(format="frame")
-            .reset_index()
+        warnings.warn(
+            "RegisteredWorker.get_workers_progress() is deprecated due to connection mutation issues. "
+            "Use get_workers_progress(registered_worker_table, connection) instead.",
+            DeprecationWarning,
+            stacklevel=2
         )
-        workflow_status.drop_duplicates(subset=["worker_name", "process"], inplace=True)
-
-        # extract jobs status
-        schema_names = set(
-            [n.split(".")[0].strip("`") for n in workflow_status.table_name if n]
-        )
-        pipeline_schemas = {
-            n: dj.Schema(n, connection=cls.connection, create_schema=False, create_tables=False)
-            for n in schema_names
-        }
-
-        job_status_df = {"reserved": [], "error": [], "ignore": []}
-        for pipeline_schema in pipeline_schemas.values():
-            try:
-                len(pipeline_schema.jobs)
-            except dj.errors.DataJointError:
-                continue
-            for job_status in ("reserved", "error", "ignore"):
-                status_df = (
-                    dj.U("table_name")
-                    .aggr(
-                        pipeline_schema.jobs & f'status = "{job_status}"',
-                        **{job_status: "count(table_name)"},
-                    )
-                    .fetch(format="frame")
-                )
-                status_df.index = status_df.index.map(
-                    lambda x: f"{pipeline_schema.database}.{x}"
-                )
-                job_status_df[job_status].append(status_df)
-
-        for k, v in job_status_df.items():
-            job_status_df[k] = pd.concat(v)
-
-        # extract AutoPopulate key_source status
-        for r_idx, r in workflow_status.iterrows():
-            if not r.key_source_sql:
-                continue
-            (
-                workflow_status.loc[r_idx, "total"],
-                workflow_status.loc[r_idx, "incomplete"],
-            ) = cls.get_key_source_count(r.key_source_sql, r.table_name)
-
-        # merge key_source and jobs status
-        workflow_status.set_index("table_name", inplace=True)
-        workflow_status.index = workflow_status.index.map(lambda x: x.replace("`", ""))
-
-        workflow_status = workflow_status.join(
-            job_status_df["reserved"]
-            .join(job_status_df["error"], how="outer")
-            .join(job_status_df["ignore"], how="outer"),
-            how="left",
-        )
-
-        workflow_status.fillna(0, inplace=True)
-        workflow_status.replace(np.inf, np.nan, inplace=True)
-
-        workflow_status["remaining"] = (
-            workflow_status.incomplete
-            - workflow_status.reserved
-            - workflow_status.error
-            - workflow_status.ignore
-        )
-
-        workflow_status.set_index("process", inplace=True)
-        workflow_status.drop(columns=["process_index", "key_source_sql"], inplace=True)
-        return workflow_status
+        return get_workers_progress(cls, cls.connection, worker_name, process_name)
 
     @classmethod
-    def get_incomplete_key_source_sql(cls, key_source_sql: str, target_full_table_name: str) -> tuple[str, str]:
+    def get_incomplete_key_source_sql(cls, key_source_sql: str, target_full_table_name: str) -> str:
         """
-        Build a SQL statement to find incomplete key_source entries in the target table.
+        DEPRECATED: Use module-level get_incomplete_key_source_sql() instead.
 
-        This method constructs a SQL query that identifies entries in the key_source that
-        have not yet been processed into the target table.
-
-        Args:
-            key_source_sql (str): Original SQL statement for the key_source of the table
-            target_full_table_name (str): Full table name of the target table (including schema)
-
-        Returns:
-            tuple[str, str]: A tuple containing:
-                - SQL statement for total key_source entries
-                - SQL statement for incomplete key_source entries
+        This method has connection mutation issues when used with multiple databases.
+        Use the module-level function which takes explicit connection parameters.
         """
-
-        def _rename_attributes(table, props):
-            return (
-                table.proj(
-                    **{
-                        attr: ref
-                        for attr, ref in props["attr_map"].items()
-                        if attr != ref
-                    }
-                )
-                if props["aliased"]
-                else table.proj()
-            )
-
-        target = dj.FreeTable(
-            full_table_name=target_full_table_name, conn=cls.connection
+        warnings.warn(
+            "RegisteredWorker.get_incomplete_key_source_sql() is deprecated due to connection mutation issues. "
+            "Use get_incomplete_key_source_sql(connection, key_source_sql, target_full_table_name) instead.",
+            DeprecationWarning,
+            stacklevel=2
         )
-
-        parents = target.parents(primary=True, as_objects=True, foreign_key_info=True)
-
-        ks_parents = _rename_attributes(*parents[0])
-        for q in parents[1:]:
-            ks_parents *= _rename_attributes(*q)
-
-        ks_attrs_sql = ks_parents.heading.as_sql(ks_parents.heading.primary_key)
-        AND_or_WHERE = (
-            "AND"
-            if "WHERE" in _remove_enclosed_parentheses(key_source_sql)
-            else " WHERE "
-        )
-        incomplete_sql = (
-            key_source_sql
-            + f"{AND_or_WHERE}(({ks_attrs_sql}) not in (SELECT {ks_attrs_sql} FROM {target.full_table_name}))"
-        )
-        return incomplete_sql
+        return get_incomplete_key_source_sql(cls.connection, key_source_sql, target_full_table_name)
 
     @classmethod
     def get_key_source_count(
@@ -211,59 +88,20 @@ class RegisteredWorker(dj.Manual):
         return_sql: bool = False
     ) -> tuple[int, int] | tuple[str, str]:
         """
-        Count total and incomplete key_source entries in the target table.
+        DEPRECATED: Use module-level get_key_source_count() instead.
 
-        This method executes SQL queries to count:
-        1. Total number of entries in the key_source
-        2. Number of entries that haven't been processed into the target table
-
-        Args:
-            key_source_sql (str): SQL statement for the key_source of the table
-            target_full_table_name (str): Full table name of the target table
-            andlist_restriction (AndList, optional): Additional restrictions to add to the queries. Defaults to None.
-            return_sql (bool, optional): If True, return SQL statements instead of counts. Defaults to False.
-
-        Returns:
-            tuple[int, int] | tuple[str, str]: If return_sql is False:
-                - (total_count, incomplete_count)
-              If return_sql is True:
-                - (total_sql, incomplete_sql)
+        This method has connection mutation issues when used with multiple databases.
+        Use the module-level function which takes explicit connection parameters.
         """
-        # validate table exists
-        schema_name, table_name = target_full_table_name.split(".")
-        table_exists = cls.connection.query(
-            f"SHOW TABLES FROM {schema_name} LIKE '{table_name.strip('`')}';").fetchall()
-        if not table_exists:
-            return np.nan, np.nan
-
-        incomplete_sql = cls.get_incomplete_key_source_sql(
-            key_source_sql, target_full_table_name
+        warnings.warn(
+            "RegisteredWorker.get_key_source_count() is deprecated due to connection mutation issues. "
+            "Use get_key_source_count(connection, key_source_sql, target_full_table_name, ...) instead.",
+            DeprecationWarning,
+            stacklevel=2
         )
-
-        if andlist_restriction:
-            restriction_str = ")AND(".join(str(s) for s in andlist_restriction)
-
-            AND_or_WHERE = (
-                "AND"
-                if "WHERE" in _remove_enclosed_parentheses(key_source_sql)
-                else " WHERE "
-            )
-
-            key_source_sql += f" {AND_or_WHERE} ({restriction_str})"
-            incomplete_sql += f" AND ({restriction_str})"
-
-        if return_sql:
-            return key_source_sql, incomplete_sql
-
-        try:
-            total = len(cls.connection.query(key_source_sql).fetchall())
-            incomplete = len(cls.connection.query(incomplete_sql).fetchall())
-        except Exception as e:
-            logger.error(
-                f"Error retrieving key_source for: {target_full_table_name}. \n{e}"
-            )
-            total, incomplete = np.nan, np.nan
-        return total, incomplete
+        return get_key_source_count(
+            cls.connection, key_source_sql, target_full_table_name, andlist_restriction, return_sql
+        )
 
 
 class WorkerLog(dj.Manual):
@@ -417,6 +255,256 @@ class ErrorLog(dj.Manual):
                     (cls & old_jobs).delete_quick()
                 except pymysql.err.OperationalError:
                     pass
+
+
+# =============================================================================
+# Module-level functions for querying worker progress
+# These functions take explicit connection parameters to avoid class mutation issues
+# See: https://github.com/datajoint-company/datajoint-utilities/issues/57
+# =============================================================================
+
+
+def get_workers_progress(
+    registered_worker_table,
+    connection: dj.Connection,
+    worker_name: str = None,
+    process_name: str = None
+) -> pd.DataFrame:
+    """
+    Get the operation progress for all registered workers, showing job status for each AutoPopulate process.
+
+    This function aggregates information about:
+    - Total and incomplete entries in key_source tables
+    - Number of reserved, error, and ignored jobs
+    - Remaining jobs to be processed
+
+    Args:
+        registered_worker_table: The RegisteredWorker table (from VirtualModule or decorated class)
+        connection (dj.Connection): Database connection to use for queries
+        worker_name (str, optional): Filter results by specific worker name. Defaults to None.
+        process_name (str, optional): Filter results by specific process name. Defaults to None.
+
+    Returns:
+        pd.DataFrame: DataFrame containing workflow status with columns:
+            - total: Total number of entries in key_source
+            - incomplete: Number of incomplete entries
+            - reserved: Number of reserved jobs
+            - error: Number of error jobs
+            - ignore: Number of ignored jobs
+            - remaining: Number of remaining jobs to process
+    """
+    restriction = {}
+    if worker_name:
+        restriction["worker_name"] = worker_name
+    if process_name:
+        restriction["process"] = process_name
+
+    workflow_status = (
+        (
+            (registered_worker_table.Process & "key_source_sql is not NULL").proj(
+                "process",
+                "key_source_sql",
+                table_name="full_table_name",
+                total="NULL",
+                incomplete="NULL",
+            )
+            & restriction
+        )
+        .fetch(format="frame")
+        .reset_index()
+    )
+    workflow_status.drop_duplicates(subset=["worker_name", "process"], inplace=True)
+
+    # extract jobs status
+    schema_names = set(
+        [n.split(".")[0].strip("`") for n in workflow_status.table_name if n]
+    )
+    pipeline_schemas = {
+        n: dj.Schema(n, connection=connection, create_schema=False, create_tables=False)
+        for n in schema_names
+    }
+
+    job_status_df = {"reserved": [], "error": [], "ignore": []}
+    for pipeline_schema in pipeline_schemas.values():
+        try:
+            len(pipeline_schema.jobs)
+        except dj.errors.DataJointError:
+            continue
+        for job_status in ("reserved", "error", "ignore"):
+            status_df = (
+                dj.U("table_name")
+                .aggr(
+                    pipeline_schema.jobs & f'status = "{job_status}"',
+                    **{job_status: "count(table_name)"},
+                )
+                .fetch(format="frame")
+            )
+            status_df.index = status_df.index.map(
+                lambda x: f"{pipeline_schema.database}.{x}"
+            )
+            job_status_df[job_status].append(status_df)
+
+    for k, v in job_status_df.items():
+        job_status_df[k] = pd.concat(v) if v else pd.DataFrame()
+
+    # extract AutoPopulate key_source status
+    for r_idx, r in workflow_status.iterrows():
+        if not r.key_source_sql:
+            continue
+        (
+            workflow_status.loc[r_idx, "total"],
+            workflow_status.loc[r_idx, "incomplete"],
+        ) = get_key_source_count(connection, r.key_source_sql, r.table_name)
+
+    # merge key_source and jobs status
+    workflow_status.set_index("table_name", inplace=True)
+    workflow_status.index = workflow_status.index.map(lambda x: x.replace("`", ""))
+
+    workflow_status = workflow_status.join(
+        job_status_df["reserved"]
+        .join(job_status_df["error"], how="outer")
+        .join(job_status_df["ignore"], how="outer"),
+        how="left",
+    )
+
+    workflow_status.fillna(0, inplace=True)
+    workflow_status.replace(np.inf, np.nan, inplace=True)
+
+    workflow_status["remaining"] = (
+        workflow_status.incomplete
+        - workflow_status.reserved
+        - workflow_status.error
+        - workflow_status.ignore
+    )
+
+    workflow_status.set_index("process", inplace=True)
+    workflow_status.drop(columns=["process_index", "key_source_sql"], inplace=True)
+    return workflow_status
+
+
+def get_incomplete_key_source_sql(
+    connection: dj.Connection,
+    key_source_sql: str,
+    target_full_table_name: str
+) -> str:
+    """
+    Build a SQL statement to find incomplete key_source entries in the target table.
+
+    This function constructs a SQL query that identifies entries in the key_source that
+    have not yet been processed into the target table.
+
+    Args:
+        connection (dj.Connection): Database connection to use for queries
+        key_source_sql (str): Original SQL statement for the key_source of the table
+        target_full_table_name (str): Full table name of the target table (including schema)
+
+    Returns:
+        str: SQL statement for incomplete key_source entries
+    """
+
+    def _rename_attributes(table, props):
+        return (
+            table.proj(
+                **{
+                    attr: ref
+                    for attr, ref in props["attr_map"].items()
+                    if attr != ref
+                }
+            )
+            if props["aliased"]
+            else table.proj()
+        )
+
+    target = dj.FreeTable(
+        full_table_name=target_full_table_name, conn=connection
+    )
+
+    parents = target.parents(primary=True, as_objects=True, foreign_key_info=True)
+
+    ks_parents = _rename_attributes(*parents[0])
+    for q in parents[1:]:
+        ks_parents *= _rename_attributes(*q)
+
+    ks_attrs_sql = ks_parents.heading.as_sql(ks_parents.heading.primary_key)
+    AND_or_WHERE = (
+        "AND"
+        if "WHERE" in _remove_enclosed_parentheses(key_source_sql)
+        else " WHERE "
+    )
+    incomplete_sql = (
+        key_source_sql
+        + f"{AND_or_WHERE}(({ks_attrs_sql}) not in (SELECT {ks_attrs_sql} FROM {target.full_table_name}))"
+    )
+    return incomplete_sql
+
+
+def get_key_source_count(
+    connection: dj.Connection,
+    key_source_sql: str,
+    target_full_table_name: str,
+    andlist_restriction: AndList = None,
+    return_sql: bool = False
+) -> tuple[int, int] | tuple[str, str]:
+    """
+    Count total and incomplete key_source entries in the target table.
+
+    This function executes SQL queries to count:
+    1. Total number of entries in the key_source
+    2. Number of entries that haven't been processed into the target table
+
+    Args:
+        connection (dj.Connection): Database connection to use for queries
+        key_source_sql (str): SQL statement for the key_source of the table
+        target_full_table_name (str): Full table name of the target table
+        andlist_restriction (AndList, optional): Additional restrictions to add to the queries. Defaults to None.
+        return_sql (bool, optional): If True, return SQL statements instead of counts. Defaults to False.
+
+    Returns:
+        tuple[int, int] | tuple[str, str]: If return_sql is False:
+            - (total_count, incomplete_count)
+          If return_sql is True:
+            - (total_sql, incomplete_sql)
+    """
+    # validate table exists
+    schema_name, table_name = target_full_table_name.split(".")
+    table_exists = connection.query(
+        f"SHOW TABLES FROM {schema_name} LIKE '{table_name.strip('`')}';").fetchall()
+    if not table_exists:
+        return np.nan, np.nan
+
+    incomplete_sql = get_incomplete_key_source_sql(
+        connection, key_source_sql, target_full_table_name
+    )
+
+    if andlist_restriction:
+        restriction_str = ")AND(".join(str(s) for s in andlist_restriction)
+
+        AND_or_WHERE = (
+            "AND"
+            if "WHERE" in _remove_enclosed_parentheses(key_source_sql)
+            else " WHERE "
+        )
+
+        key_source_sql += f" {AND_or_WHERE} ({restriction_str})"
+        incomplete_sql += f" AND ({restriction_str})"
+
+    if return_sql:
+        return key_source_sql, incomplete_sql
+
+    try:
+        total = len(connection.query(key_source_sql).fetchall())
+        incomplete = len(connection.query(incomplete_sql).fetchall())
+    except Exception as e:
+        logger.error(
+            f"Error retrieving key_source for: {target_full_table_name}. \n{e}"
+        )
+        total, incomplete = np.nan, np.nan
+    return total, incomplete
+
+
+# =============================================================================
+# Helper functions
+# =============================================================================
 
 
 def get_process_name(process, db_prefix):

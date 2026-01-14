@@ -45,6 +45,10 @@ from .worker_schema import (
     ErrorLog,
     get_process_name,
     is_djtable,
+    # Module-level functions (preferred over class methods)
+    get_workers_progress,
+    get_key_source_count,
+    get_incomplete_key_source_sql,
 )
 
 logger = dj.logger
