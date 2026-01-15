@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import re
 
-from .worker_schema import RegisteredWorker
+from .worker_schema import get_workers_progress
 
 
 os.environ["DJ_SUPPORT_FILEPATH_MANAGEMENT"] = "TRUE"
@@ -138,21 +138,21 @@ def get_workflow_operation_overview(
         return pd.DataFrame()
 
     # -- New method to retrieve workflow_operation_overview more accurately, accounting for modified key_source
-    if hasattr(workerlog_vm, RegisteredWorker.__name__):
-        _schema = dj.schema(worker_schema_name, connection=connection)
-        _schema(RegisteredWorker)
+    # Use VirtualModule's spawned table (already bound to correct connection) to avoid class mutation
+    if hasattr(workerlog_vm, "RegisteredWorker"):
+        registered_worker = workerlog_vm.RegisteredWorker
         # confirm workers' processes overlap with the specified db_prefixes
         is_valid_db_prefixes = db_prefixes is None or set(
             [
                 n.split(".")[0].strip("`")
                 for n in (
-                    RegisteredWorker.Process & "key_source_sql is not NULL"
+                    registered_worker.Process & "key_source_sql is not NULL"
                 ).fetch("full_table_name")
                 if re.match("|".join(db_prefixes), n.split(".")[0].strip("`"))
             ]
         )
         return (
-            RegisteredWorker.get_workers_progress()
+            get_workers_progress(registered_worker, connection)
             if is_valid_db_prefixes
             else pd.DataFrame()
         )
