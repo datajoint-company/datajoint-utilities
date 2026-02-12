@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "datajoint-utilities"
 version = "0.8.0"
 description = "A general purpose repository containing all generic tools/utilities surrounding the DataJoint ecosystem"
-requires-python = ">=3.9, <3.12"
+requires-python = ">=3.10, <3.13"
 license = { file = "LICENSE" }
 authors = [{ name = "DataJoint", email = "info@datajoint.com" }]
 keywords = ["datajoint", "workflow"]
@@ -17,7 +17,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
-    "datajoint>=0.14.3",
+    "datajoint>=0.14,<2.0",
     "termcolor",
     "slack-sdk",
     "python-dotenv",
