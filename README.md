@@ -15,6 +15,24 @@ A general purpose repository containing all generic tools/utilities surrounding 
 pip install git+https://github.com/datajoint-company/datajoint-utilities.git
 ```
 
+# Releases
+
+A release is an annotated git tag `vX.Y.Z` (semantic versioning). The tag message is the release
+notes, and the package version is read from the tag at build time, so no file in the repository
+carries the version.
+
+To release from an up-to-date `main`:
+
+```
+git tag -a vX.Y.Z      # the editor opens; write the release notes as the tag message
+git push origin vX.Y.Z
+gh release create vX.Y.Z --notes-from-tag
+```
+
+Install a specific release with
+`pip install git+https://github.com/datajoint-company/datajoint-utilities.git@vX.Y.Z`.
+Notes for every release are on the [releases page](https://github.com/datajoint-company/datajoint-utilities/releases).
+
 # Level of support
 
 The tools/utilities here are meant as reference or example implementation for other DataJoint

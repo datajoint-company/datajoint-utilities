@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=62.0", "wheel>=0.37"]
+requires = ["setuptools>=64", "setuptools-scm>=8", "wheel>=0.37"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "datajoint-utilities"
-version = "0.8.0"
+dynamic = ["version"]
 description = "A general purpose repository containing all generic tools/utilities surrounding the DataJoint ecosystem"
 requires-python = ">=3.10, <3.13"
 license = { file = "LICENSE" }
@@ -31,6 +31,10 @@ tmplcfg = "datajoint_utilities.cmdline.tmplcfg:cli"
 [project.urls]
 Source = "https://github.com/datajoint-company/datajoint-utilities"
 DataJoint = "https://datajoint.com/docs"
+
+[tool.setuptools_scm]
+# The version comes from the latest release tag (vX.Y.Z); see "Releases" in the README.
+fallback_version = "0.0.0"
 
 [tool.setuptools]
 package-data = { "*" = ["*.pyi", "py.typed"] }
